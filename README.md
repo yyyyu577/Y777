@@ -1,27 +1,3 @@
--- ============================================================================
--- NPC KILL TESTER PRO v36.0 — FULL ARSENAL MERGED EDITION
---
--- 📦 ПОЛНОЕ СЛИЯНИЕ ПО ТВОЕМУ ТЗ:
---   ✅ Оригинальный v32.0 GUI + панель настроек + модули СОХРАНЕНЫ
---   ✅ Все старые методы (№1-№96) СОХРАНЕНЫ и работают как раньше
---   ✅ Новые методы v33-v35 (№97-№126) ИНТЕГРИРОВАНЫ в главную кнопку
---      и распределены по категориям (модулям) панели настроек
---   ✅ 10 СОВЕРШЕННО НОВЫХ методов (№127-№136) — уникальные, не повторяют старые
---   ✅ БЕЗ телепортаций и без чистого Destroy (по твоему запросу)
---
--- 🔥 10 НОВЫХ УНИКАЛЬНЫХ МЕТОДОВ (№127 – №136):
---   127. 🌀 CFRAME LOOP CRUSHER      — микро-CFrame атака на Motor6D.C0/C1 (не R6!)
---   128. 🌀 ANIMATION TRACK OVERLOAD — 500 anim треков на Humanoid = крашится
---   129. 🌀 SOUND FREQUENCY WEAPON   — Sound с PlaybackSpeed=math.huge (лаг-урон)
---   130. 🌀 ATTACHMENT ORBIT CHAOS   — крутим Attachments = ломаются связи
---   131. 🌀 COLLISION GROUP ISOLATE  — вырубаем CollisionGroup NPC → падает
---   132. 🌀 NETWORK OWNER PING-PONG  — 20 раз меняем NetworkOwner (десинк)
---   133. 🌀 BODYFORCE INFINITE PUSH  — BodyVelocity с массой Vector3.zero (глюк)
---   134. 🌀 TOUCHED EVENT BOMB       — 1000 фиктивных Touched на BasePart
---   135. 🌀 MESH RESIZE OVERFLOW     — MeshPart.Size = Vector3.new(0.01,0.01,0.01)
---   136. 🌀 CHILDREN CASCADE PURGE   — рекурсивная очистка Value/Attribute-полей
--- ============================================================================
-
 if _G.NPCKillTesterPro and _G.NPCKillTesterPro.Unload then
     _G.NPCKillTesterPro.Unload()
     task.wait(0.3)
