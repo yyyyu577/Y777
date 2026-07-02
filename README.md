@@ -57,7 +57,7 @@ highlight.Parent = lp
 highlight.FillTransparency = 1
 highlight.OutlineTransparency = 1
 
--- ==================== АНАЛИЗАТОР ИГРЫ ====================
+-- ==================== АНАЛИЗАТОР ИГPЫ ====================
 local function indexObject(obj)
     if not obj then return end
     pcall(function()
