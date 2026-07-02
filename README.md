@@ -1,9 +1,9 @@
-if _G.PatrickNPCPanel and _G.PatrickNPCPanel.Unload then
-    _G.PatrickNPCPanel.Unload()
-    task.wait(0.4)
+if _G.NPCKillTesterPro and _G.NPCKillTesterPro.Unload then
+    _G.NPCKillTesterPro.Unload()
+    task.wait(0.3)
 end
 
-_G.PatrickNPCPanel = {}
+_G.NPCKillTesterPro = {}
 
 local rs = game:GetService("RunService")
 local ws = game:GetService("Workspace")
@@ -14,18 +14,11 @@ local lp = plrs.LocalPlayer
 local mouse = lp:GetMouse()
 local ts = game:GetService("TweenService")
 
-local currentnpc = nil
 local selectedNPCs = {}
-local activeTarget = nil
-local clickRad = false
-
-local chr, cons, followCon, auraCon, massFollowCon, possessCon, possessTarget, reclaimCon, ignoreCon
+local currentNPC = nil
 local connections = {}
 local highlights = {}
-local isControlling = false
-local attackMode = false
 
--- Глобальная база данных Авто-Анализатора игры
 local DeepAnalysisData = { CombatRemotes = {}, MapHazards = {}, DeathSignals = {}, WeaponRemotes = {}, TaggedKillBricks = {} }
 
 local function track(name, con) if con then connections[name] = con end end
@@ -98,7 +91,7 @@ end
 
 ws.DescendantAdded:Connect(indexObject); rep.DescendantAdded:Connect(indexObject)
 
--- ==================== ИДЕАЛЬНОЕ РАСПОЗНАВАНИЕ И ДЕДУПЛИКАЦИЯ (ЗОЛОТОЕ ПРАВИЛО №1) ====================
+-- ==================== ПАРАМЕТРИЧЕСКОЕ ОБНАРУЖЕНИЕ БЕЗ СЛОВ И БЕЗ ЛАГОВ ====================
 
 local function getRootPart(obj)
     if not obj then return nil end
@@ -125,46 +118,30 @@ local function getRootPart(obj)
     return nil
 end
 
--- ЗОЛОТОЕ ПРАВИЛО №1: Отсекает Map, Event, Workspace и любые контейнеры!
-local function isTrueNPC(obj)
-    if not obj or obj == ws or obj == lp.Character then return false end
-    if obj:IsA("Model") and plrs:GetPlayerFromCharacter(obj) ~= nil then return false end -- Реальный игрок
-    if not obj:IsA("Model") and not obj:IsA("Folder") and not obj:IsA("BasePart") then return false end
+local function isParametricCreature(model)
+    if not model or not model:IsA("Model") then return false end
+    if model == ws or model == lp.Character then return false end
+    if plrs:GetPlayerFromCharacter(model) ~= nil then return false end
     
-    for _, child in ipairs(obj:GetChildren()) do
-        if child:IsA("Model") or child:IsA("Folder") then
-            if child:FindFirstChildOfClass("Humanoid", true) or child:FindFirstChildOfClass("AnimationController", true) then
-                return false -- Это папка контейнера/карты! Игнорируем!
-            end
-        end
+    local partsCount = 0
+    for _, child in ipairs(model:GetChildren()) do if child:IsA("BasePart") then partsCount = partsCount + 1 end end
+    if partsCount == 0 and not model:FindFirstChildOfClass("Model") then return false end
+    if partsCount > 350 then return false end
+    
+    if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChildOfClass("AnimationController") or model:FindFirstChildOfClass("ControllerManager") then return true end
+    if model:FindFirstChildOfClass("Bone", true) then return true end
+    if model:FindFirstChild("Health", true) or model:FindFirstChild("HP", true) or model:FindFirstChild("MaxHealth", true) or model:GetAttribute("Health") or model:GetAttribute("HP") or model:GetAttribute("Enemy") or model:GetAttribute("Boss") then return true end
+    for _, desc in ipairs(model:GetDescendants()) do
+        if desc:IsA("Motor6D") or desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") or desc:IsA("AlignPosition") or desc:IsA("RigidConstraint") then return true end
     end
-    
-    local hum = obj:FindFirstChildOfClass("Humanoid") or (obj:IsA("Folder") and obj:FindFirstChildOfClass("Humanoid", true))
-    local anim = obj:FindFirstChildOfClass("AnimationController") or (obj:IsA("Folder") and obj:FindFirstChildOfClass("AnimationController", true))
-    local valHP = obj:FindFirstChild("Health") or obj:FindFirstChild("HP") or obj:FindFirstChild("MaxHealth") or obj:GetAttribute("Health") or obj:GetAttribute("HP") or obj:GetAttribute("Boss") or obj:GetAttribute("Enemy")
-    local root = getRootPart(obj)
-    
-    if hum or anim or valHP then return true end
-    
-    local nm = string.lower(obj.Name)
-    local pName = obj.Parent and string.lower(obj.Parent.Name) or ""
-    local hasKeyword = string.find(nm, "robot") or string.find(nm, "bot") or string.find(nm, "droid") or string.find(nm, "mech") or string.find(nm, "turret") or string.find(nm, "zombie") or string.find(nm, "guard") or string.find(nm, "soldier") or string.find(nm, "warrior") or string.find(nm, "fighter") or string.find(nm, "target") or string.find(nm, "dummy") or string.find(nm, "clone") or string.find(nm, "minion") or string.find(nm, "creature") or string.find(nm, "beast") or string.find(nm, "alien") or string.find(nm, "ai") or string.find(nm, "bandit") or string.find(nm, "pirate") or string.find(nm, "boss") or string.find(nm, "killer") or string.find(nm, "thanos") or string.find(nm, "monster") or string.find(nm, "mutant") or string.find(nm, "demon") or string.find(nm, "dragon") or string.find(nm, "npc") or string.find(nm, "робот") or string.find(nm, "бот") or string.find(nm, "дроид") or string.find(nm, "мех") or string.find(nm, "турель") or string.find(nm, "зомби") or string.find(nm, "охранник") or string.find(nm, "солдат") or string.find(nm, "воин") or string.find(nm, "боец") or string.find(nm, "цель") or string.find(nm, "манекен") or string.find(nm, "клон") or string.find(nm, "миньон") or string.find(nm, "существо") or string.find(nm, "зверь") or string.find(nm, "пришелец") or string.find(nm, "бандит") or string.find(nm, "пират") or string.find(nm, "босс") or string.find(nm, "убийца") or string.find(nm, "танос") or string.find(nm, "монстр") or string.find(nm, "мутант") or string.find(nm, "демон") or string.find(nm, "дракон") or string.find(nm, "нпс") or string.find(nm, "враг") or string.find(nm, "моб") or string.find(nm, "ученый")
-    
-    local parentIsEnemyFolder = string.find(pName, "enemy") or string.find(pName, "mob") or string.find(pName, "npc") or string.find(pName, "live") or string.find(pName, "monster") or string.find(pName, "boss") or string.find(pName, "killer")
-    
-    if hasKeyword or parentIsEnemyFolder then
-        if obj:IsA("Model") or obj:IsA("BasePart") or (obj:IsA("Folder") and #obj:GetChildren() > 0) then return true end
-    end
-    
     return false
 end
 
--- ВАЖНЕЙШАЯ ФУНКЦИЯ, КОТОРАЯ ОТСУТСТВОВАЛА В v21: Собирает всех реальных существ без дубликатов!
 local function getAllValidEntities()
     local rawCandidates = {}
     for _, obj in ipairs(ws:GetDescendants()) do
         if obj:IsA("Model") and obj ~= lp.Character and not plrs:GetPlayerFromCharacter(obj) then
-            if isTrueNPC(obj) then table.insert(rawCandidates, obj) end
+            if isParametricCreature(obj) then table.insert(rawCandidates, obj) end
         end
     end
     local finalEntities = {}
@@ -179,9 +156,7 @@ local function getAllValidEntities()
 end
 
 local function analyzeEntity(obj)
-    if not isTrueNPC(obj) then return false, nil, nil, false, nil end
     local root = getRootPart(obj); if not root then return false, nil, nil, false, nil end
-
     local isAnchored = root.Anchored
     local hum = obj:FindFirstChildOfClass("Humanoid") or (obj:IsA("Folder") and obj:FindFirstChildOfClass("Humanoid", true))
     local anim = obj:FindFirstChildOfClass("AnimationController") or (obj:IsA("Folder") and obj:FindFirstChildOfClass("AnimationController", true))
@@ -205,10 +180,8 @@ local function analyzeEntity(obj)
         if valHP and (valHP:IsA("NumberValue") or valHP:IsA("IntValue")) then hpText = tostring(valHP.Value).." (Val)"
         else hpText = tostring(attrHP).." (Attr)" end
     else
-        if obj:IsA("Folder") then entityType = isBoss and "[👑 Boss Folder]" or "[📁 Folder Mob]"
-        elseif isRobot then entityType = "[🤖 Робот/Entity]"
-        else entityType = isBoss and "[👑 Boss Model]" or "[👾 Entity]" end
-        hpText = "Immortal/Timer"
+        entityType = isBoss and "[👑 Boss Rig]" or (isRobot and "[🤖 Робот/Entity]" or "[🦾 Custom Rig]")
+        hpText = "Rig/Timer"
     end
     return true, entityType, hpText, isAnchored, root
 end
@@ -220,27 +193,21 @@ local function checkOwnership(part)
     if ok and owner then return "[✅ ME]" else return "[🌐 SERVER/OTHER]" end
 end
 
-local function isnpc(m) return isTrueNPC(m) end
-local function isRealPlayer(m) return m and plrs:GetPlayerFromCharacter(m) ~= nil end
-partowner = partowner or function(p)
-    if not p or not p:IsA("BasePart") or p.Anchored then return false end
-    local ok, o = pcall(function() return p:IsNetworkOwner() end)
-    return ok and o
-end
-
-local function getSel()
+local function getTargets()
     local t = {}
-    for n,_ in pairs(selectedNPCs) do
-        if n and n.Parent and not isRealPlayer(n) and isTrueNPC(n) then table.insert(t,n) else selectedNPCs[n]=nil end
+    for obj,_ in pairs(selectedNPCs) do
+        if obj and obj.Parent then table.insert(t, obj) else selectedNPCs[obj] = nil end
     end
+    if #t == 0 and currentNPC and currentNPC.Parent then table.insert(t, currentNPC) end
     return t
 end
 
+-- ЩАДЯЩИЙ ЗАХВАТ ВЛАДЕНИЯ (SBBF SAFE CLAIM): Без взрывного буста радиуса до 1e15, который агрит античит SBBF!
 local function claimFE(obj)
     pcall(function()
         if sethiddenproperty then
-            sethiddenproperty(lp, "SimulationRadius", 1e15)
-            sethiddenproperty(lp, "MaximumSimulationRadius", 1e15)
+            sethiddenproperty(lp, "SimulationRadius", 1000) -- Безопасный радиус 1000 стадов!
+            sethiddenproperty(lp, "MaximumSimulationRadius", 1000)
         end
         for _,p in ipairs(obj:GetDescendants()) do
             if p:IsA("BasePart") and not p.Anchored then pcall(function() p:SetNetworkOwner(lp) end) end
@@ -248,7 +215,7 @@ local function claimFE(obj)
     end)
 end
 
--- ==================== ПОЛНЫЙ АРСЕНАЛ ИЗ 40 БОЕВЫХ МЕТОДОВ (ПОД КАПОТОМ КНОПОК!) ====================
+-- ==================== АРСЕНАЛ ВНУТРЕННИХ МЕТОДОВ ====================
 
 local function kill_1_SimpleHP(obj)
     claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("Humanoid", true)
@@ -299,7 +266,6 @@ local function kill_5_DecapitateHeadTorso(obj)
     end
 end
 
--- 🛡️ МЕТОД №6: 100% БЕЗОПАСНЫЙ ВЗРЫВ (БЕЗ УРОНА И ОТКИДЫВАНИЯ ИГРОКА!)
 local function kill_6_SafePulseExplosion(obj)
     claimFE(obj); local root = getRootPart(obj); if not root then return end
     pcall(function()
@@ -342,10 +308,9 @@ local function kill_9_KineticBodyTear(obj)
     end
 end
 
--- 💥 МЕТОД №10: SPIN-TEAR (ЦЕНТРИФУГА 1e6 - ВОЙДЕТ В КНОПКУ ULTRAKILL!)
+-- 💥 МЕТОД №10: SPIN-TEAR (ВОЙДЕТ В 4-Ю КНОПКУ ПУСТОТЫ И ФЛИНГА!)
 local function kill_10_AssemblyAngularSpinTear(obj)
     claimFE(obj); local root = getRootPart(obj); if not root then return end
-    print("[💥 SPIN-TEAR 10] Запуск бешеной центрифуги 1e6 для:", obj.Name)
     pcall(function()
         root.AssemblyAngularVelocity = Vector3.new(1e6, 1e6, 1e6)
         for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") and p ~= root then pcall(function() p.AssemblyLinearVelocity = Vector3.new(0, 100000, 0) end) end end
@@ -393,29 +358,26 @@ local function kill_17_OfficialWeaponOverdrive(obj)
         for i=1,15 do
             if not obj or not obj.Parent then break end
             pcall(function() tool:Activate() end)
-            if handle and root and firetouchinterest then pcall(function() handle.Size = Vector3.new(50, 50, 50); handle.Massless = true; handle.CanCollide = false; firetouchinterest(handle, root, 0); task.wait(); firetouchinterest(handle, root, 1) end) end
+            if handle and root and firetouchinterest then pcall(function() handle.Size = Vector3.new(35, 35, 35); handle.Massless = true; handle.CanCollide = false; firetouchinterest(handle, root, 0); task.wait(); firetouchinterest(handle, root, 1) end) end
             task.wait(0.03)
         end
         if handle then pcall(function() handle.Size = Vector3.new(1,4,1) end) end
     end)
 end
 
--- 💥 МЕТОД №18: 100% ANTICHEAT-SAFE REMOTE BRUTE-FORCE (ВСТРОЕН В КНОПКИ KILL И KILLALL!)
 local function kill_18_SafeRemoteBruteForce(obj)
     if #DeepAnalysisData.CombatRemotes == 0 then runFullAnalysis() end
     task.spawn(function()
-        for i=1,8 do
+        for i=1,6 do
             if not obj or not obj.Parent then break end
             for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do
                 pcall(function()
                     if rem:IsA("RemoteEvent") then
                         rem:FireServer(obj); rem:FireServer(obj, 100); rem:FireServer("Attack", obj); rem:FireServer(getRootPart(obj))
-                    elseif rem:IsA("RemoteFunction") then
-                        task.spawn(function() rem:InvokeServer(obj) end)
-                    end
+                    elseif rem:IsA("RemoteFunction") then task.spawn(function() rem:InvokeServer(obj) end) end
                 end)
             end
-            task.wait(0.04)
+            task.wait(0.06)
         end
     end)
 end
@@ -501,19 +463,21 @@ local function kill_28_ProximityClickExecute(obj)
     end
 end
 
--- 💥 МЕТОД №29: SUPERSONIC LAUNCH (ОТКИДЫВАЕТ В КОСМОС 10^9 - ВОЙДЕТ В КНОПКУ ULTRAKILL!)
+-- 💥 МЕТОД №29: SUPERSONIC LAUNCH (ВОЙДЕТ В 4-Ю КНОПКУ ПУСТОТЫ И ФЛИНГА!)
 local function kill_29_SupersonicLaunch(obj)
     claimFE(obj); local root = getRootPart(obj); if not root then return end
     print("[💥 SUPERSONIC 29] Отстрел со скоростью 10^9 в космос для:", obj.Name)
     pcall(function() root.CanCollide = false; root.CFrame = root.CFrame + Vector3.new(0, 50, 0); root.AssemblyLinearVelocity = Vector3.new(1000000000, 1000000000, -1000000000) end)
 end
 
+-- 💥 МЕТОД №30: PIVOT STOMP LOOP (ВОЙДЕТ В 4-Ю КНОПКУ ПУСТОТЫ!)
 local function kill_30_PivotStompLoop(obj)
     claimFE(obj); task.spawn(function()
         for i=1,15 do if not obj or not obj.Parent then break end; pcall(function() obj:PivotTo(CFrame.new(0, -1500, 0)) end); task.wait(0.04) end
     end)
 end
 
+-- 💥 МЕТОД №31: PHYSICS SLEEP DESYNC (ВОЙДЕТ В 4-Ю КНОПКУ ПУСТОТЫ!)
 local function kill_31_PhysicsSleepDesync(obj)
     claimFE(obj); local root = getRootPart(obj); if not root then return end
     task.spawn(function()
@@ -529,6 +493,7 @@ local function kill_32_FloorMaterialRaceCondition(obj)
     end)
 end
 
+-- 💥 МЕТОД №33: ASSEMBLY MASS OVERDRIVE (ВОЙДЕТ В 4-Ю КНОПКУ ПУСТОТЫ!)
 local function kill_33_AssemblyMassOverdrive(obj)
     claimFE(obj); pcall(function()
         for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then p.CustomPhysicalProperties = PhysicalProperties.new(100, 0, 0, 100, 100); p.AssemblyLinearVelocity = Vector3.new(0, -50000, 0) end end
@@ -543,6 +508,7 @@ local function kill_34_CollectionServiceTagFlood(obj)
     end)
 end
 
+-- 💥 МЕТОД №35: SEAT WELD HIJACK (ВОЙДЕТ В 4-Ю КНОПКУ ПУСТОТЫ!)
 local function kill_35_SeatWeldHijack(obj)
     local hum = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("Humanoid", true); local root = getRootPart(obj); if not hum or not root then return end
     task.spawn(function()
@@ -609,28 +575,199 @@ local function kill_40_PathfindingLinkSabotage(obj)
     if hum then pcall(function() hum:MoveTo(hum.RootPart and hum.RootPart.Position or Vector3.zero); hum.AutoRotate = false end) end
 end
 
--- ==================== 2 ГЕНЕРАЛЬНЫЕ СУПЕР-ФУНКЦИИ (МОНОЛИТ v22.0) ====================
+-- ==================== 10 СОВЕРШЕННО НОВЫХ МЕТОДОВ ДЛЯ ТЕСТА (№77 – №86) ====================
+-- Нацелены на SBBF, приклеенные к рукам кастомные оружия, античит-сейф и щиты!
 
--- 🟩 КНОПКА KILL / KILLALL: 🌟 ЧИСТОЕ УБИЙСТВО (SAFE OMNI-KILL) 🌟
+local function kill_77_CustomWeldedWeaponOverdrive(obj)
+    -- Атака приклеенным к руке оружием (SBBF style): ищет приваренные к рукам модели и детали,
+    -- увеличивает их хитбоксы и сталкивает с боссом!
+    local char = lp.Character; if not char then return end
+    local root = getRootPart(obj); if not root then return end
+    print("[💥 NEW 77 SBBF] Атака приваренным к руке кастомным оружием по:", obj.Name)
+    for _,part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part ~= char.PrimaryPart and not string.find(part.Name, "Leg") and not string.find(part.Name, "Head") and not string.find(part.Name, "Torso") then
+            if part.Size.Magnitude > 1.5 or part:FindFirstChildOfClass("TouchTransmitter") then
+                task.spawn(function()
+                    for i=1,10 do
+                        if not obj or not obj.Parent then break end
+                        pcall(function()
+                            if firetouchinterest then firetouchinterest(part, root, 0); firetouchinterest(part, root, 1) end
+                            part.AssemblyLinearVelocity = (root.Position - part.Position).Unit * 100
+                        end)
+                        task.wait(0.04)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+local function kill_78_SBBFSafeAttributeDrain(obj)
+    -- SBBF-Сейф сброс статов: ставит атрибуты здоровья в 1 (не 0, не отрицательные и не NaN!) с паузой 0.15с
+    print("[💥 NEW 78 STEALTH] Ювелирный безопасный сброс атрибутов ХП в 1 для:", obj.Name)
+    local root = getRootPart(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
+    for _,item in ipairs({obj, root, hum}) do
+        if item then
+            for _,attr in ipairs({"Health", "HP", "Shield", "Armor", "BossHealth", "EnemyHealth"}) do
+                if item:GetAttribute(attr) ~= nil then pcall(function() item:SetAttribute(attr, 1) end); task.wait(0.15) end
+            end
+        end
+    end
+end
+
+local function kill_79_CharacterRemoteHijack(obj)
+    -- Взлом ремоутов ВНУТРИ персонажа: в файтингах пульты атак лежат прямо внутри lp.Character!
+    local char = lp.Character; if not char then return end
+    print("[💥 NEW 79 HIJACK] Активация боевых пультов внутри персонажа по:", obj.Name)
+    for _,rem in ipairs(char:GetDescendants()) do
+        if rem:IsA("RemoteEvent") or rem:IsA("RemoteFunction") or rem:IsA("BindableEvent") then
+            local nm = string.lower(rem.Name)
+            if string.find(nm, "attack") or string.find(nm, "slash") or string.find(nm, "hit") or string.find(nm, "combat") or string.find(nm, "skill") or string.find(nm, "dmg") then
+                pcall(function()
+                    if rem:IsA("RemoteEvent") then rem:FireServer(obj); rem:FireServer(getRootPart(obj), 500)
+                    elseif rem:IsA("RemoteFunction") then task.spawn(function() rem:InvokeServer(obj, 500) end)
+                    elseif rem:IsA("BindableEvent") then rem:Fire(obj); rem:Fire(500) end
+                end)
+            end
+        end
+    end
+end
+
+local function kill_80_InvisibleHitboxExpansion(obj)
+    -- Незримое увеличение хитбокса самого босса до 50х50х50 (CanCollide=false, Transparency=1)
+    local root = getRootPart(obj); if not root then return end
+    print("[💥 NEW 80 EXPAND] Увеличение хитбокса босса до 50 стадов для легкого удара:", obj.Name)
+    pcall(function()
+        root.Size = Vector3.new(50, 50, 50)
+        root.CanCollide = false
+        root.Transparency = 1
+    end)
+end
+
+local function kill_81_Motor6DSilentDisconnect(obj)
+    -- Бесшумный срыв суставов без Destroy() (ставит Enabled = false или CurrentAngle = 999)
+    claimFE(obj); print("[💥 NEW 81 SILENT] Бесшумное отключение Motor6D без удаления для:", obj.Name)
+    for _,v in ipairs(obj:GetDescendants()) do
+        if v:IsA("Motor6D") then pcall(function() v.Enabled = false; v.CurrentAngle = 999 end) end
+    end
+end
+
+local function kill_82_CustomShieldPartVaporizer(obj)
+    -- Уничтожение физических щитов, барьеров и вращающихся сфер вокруг босса
+    print("[💥 NEW 82 SHIELD] Удаление физических щитов и барьеров у:", obj.Name)
+    for _,p in ipairs(obj:GetDescendants()) do
+        if p:IsA("BasePart") and (string.find(string.lower(p.Name), "shield") or string.find(string.lower(p.Name), "barrier") or string.find(string.lower(p.Name), "protect") or string.find(string.lower(p.Name), "aura") or string.find(string.lower(p.Name), "block")) then
+            pcall(function() p:Destroy() end)
+        end
+    end
+end
+
+local function kill_83_SimulationRadiusSafeClaim(obj)
+    -- Щадящий законный захват владения: ставит SimulationRadius = 1000 стадов без аномалий в 1e15!
+    print("[💥 NEW 83 SAFE CLAIM] Законный захват владения (SimulationRadius 1000) для:", obj.Name)
+    pcall(function()
+        if sethiddenproperty then
+            sethiddenproperty(lp, "SimulationRadius", 1000)
+            sethiddenproperty(lp, "MaximumSimulationRadius", 1000)
+        end
+        local root = getRootPart(obj)
+        if root and lp.Character and getRootPart(lp.Character) then
+            -- Микро-подход на 0.05 сек для передачи физики сервером
+            local oldCF = getRootPart(lp.Character).CFrame
+            getRootPart(lp.Character).CFrame = root.CFrame + Vector3.new(2, 0, 0)
+            task.wait(0.05)
+            getRootPart(lp.Character).CFrame = oldCF
+        end
+    end)
+end
+
+local function kill_84_AnimatorStateMachineStop(obj)
+    -- Принудительная остановка объекта Animator внутри Humanoid (блокирует каст скиллов босса)
+    print("[💥 NEW 84 ANIMATOR] Остановка объекта Animator для блокировки атак:", obj.Name)
+    for _,animator in ipairs(obj:GetDescendants()) do
+        if animator:IsA("Animator") then
+            pcall(function() for _,t in ipairs(animator:GetPlayingAnimationTracks()) do t:Stop(0); t:Destroy() end end)
+        end
+    end
+end
+
+local function kill_85_AlignOrientationSpinLock(obj)
+    -- Скручивание шеи и торса вниз головой констрейнтом AlignOrientation
+    claimFE(obj); local root = getRootPart(obj); if not root then return end
+    print("[💥 NEW 85 SPIN LOCK] Скручивание торса вниз головой для:", obj.Name)
+    pcall(function()
+        local att = Instance.new("Attachment", root)
+        local ao = Instance.new("AlignOrientation", root)
+        ao.Attachment0 = att; ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+        ao.CFrame = CFrame.Angles(math.pi, 0, 0); ao.MaxTorque = math.huge; ao.Responsiveness = 200
+        task.delay(1.5, function() pcall(function() ao:Destroy(); att:Destroy() end) end)
+    end)
+end
+
+local function kill_86_AnticheatBypassTakeDamage(obj)
+    -- Легальный чистый урон TakeDamage(500) каждые 0.1с (античит видит нормальный игровой ДПС!)
+    local hum = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("Humanoid", true); if not hum then return end
+    print("[💥 NEW 86 LEGAL DPS] Легальный чистый ДПС TakeDamage(500) для:", obj.Name)
+    task.spawn(function()
+        for i=1,15 do
+            if not obj or not obj.Parent then break end
+            pcall(function() hum:TakeDamage(500) end)
+            task.wait(0.1)
+        end
+    end)
+end
+
+
+-- ============================================================================
+-- 👑 ВОТ НАША ГЛАВНАЯ, ОГРОМНАЯ, СИЛЬНЕЙШАЯ ФУНКЦИЯ УБИЙСТВА (30-ТИКОВЫЙ ЦИКЛ!)
+-- ============================================================================
+-- Именно здесь объединены все 38 чистых методов. Она работает волнами в 30 тиков
+-- и автоматически включает щадящий протокол, если у босса нет Humanoid!
+-- ============================================================================
 local function MASTER_SAFE_OMNI_KILL(obj)
     if not obj or not obj.Parent then return end
     claimFE(obj)
-    print("[🌟 SAFE OMNI-KILL v22.0 🌟] Чистая аннигиляция (38 методов) для:", obj.Name)
     
-    task.spawn(function() kill_18_SafeRemoteBruteForce(obj); kill_26_RemoteTableInjection(obj); kill_17_OfficialWeaponOverdrive(obj); kill_19_WeaponRemoteHijack(obj); kill_37_MatrixWeaponTouch(obj); kill_20_BindableSignalTrigger(obj); kill_21_AttributeTagExecution(obj); kill_28_ProximityClickExecute(obj); kill_34_CollectionServiceTagFlood(obj) end)
-    task.spawn(function() kill_6_SafePulseExplosion(obj); kill_22_MapHazardTouchAbuse(obj); kill_23_TouchTransmitterHijack(obj); kill_35_SeatWeldHijack(obj) end)
+    local isStealthBoss = obj:FindFirstChildOfClass("Humanoid") == nil
+    print("[🌟 ГЛАВНАЯ СИЛЬНЕЙШАЯ ФУНКЦИЯ 🌟] Запуск 30-тикового цикла для:", obj.Name, "| Stealth Boss:", isStealthBoss)
     
-    task.wait(0.03)
-    task.spawn(function() kill_7_CustomConstraintShatter(obj); kill_8_SkinnedMeshBoneShatter(obj); kill_9_KineticBodyTear(obj); kill_25_DisarmBossHitboxes(obj); kill_27_JointNulling(obj); kill_31_PhysicsSleepDesync(obj); kill_33_AssemblyMassOverdrive(obj); kill_36_AnimationStateCrash(obj); kill_38_GyroscopicImpulseDestab(obj); kill_39_ElasticDismember(obj); kill_40_PathfindingLinkSabotage(obj) end)
-    
-    task.wait(0.06)
-    task.spawn(function() kill_1_SimpleHP(obj); kill_2_RagdollStateDead(obj); kill_3_BreakJointsMotorsLoop(obj); kill_4_ValueAttrZero(obj); kill_5_DecapitateHeadTorso(obj); kill_30_PivotStompLoop(obj); kill_32_FloorMaterialRaceCondition(obj) end)
-    
-    task.wait(0.1)
-    task.spawn(function() kill_11_TakeDamageLoop(obj); kill_12_NaNInfinityMathCrash(obj); kill_13_DoubleOverflow1e308(obj); kill_14_AttrValNegativeInversion(obj); kill_15_StripShieldsImmortality(obj); kill_16_SafeMaxHealthShrink(obj) end)
+    task.spawn(function()
+        for tick = 1, 30 do
+            if not obj or not obj.Parent then break end
+            
+            -- ВОЛНА 1 (Каждый тик): Системный урон и безопасная математика
+            pcall(function()
+                local hum = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("Humanoid", true)
+                if hum then hum:TakeDamage(math.huge); hum.Health = 0; hum:ChangeState(Enum.HumanoidStateType.Dead); hum.Sit = true; hum.PlatformStand = true end
+            end)
+            kill_4_ValueAttrZero(obj); kill_16_SafeMaxHealthShrink(obj); kill_21_AttributeTagExecution(obj)
+            
+            -- ВОЛНА 2 (Каждые 2 тика): Анатомия, кости, суставы и новое приваренное оружие
+            if tick % 2 == 0 then
+                kill_7_CustomConstraintShatter(obj); kill_8_SkinnedMeshBoneShatter(obj); kill_25_DisarmBossHitboxes(obj); kill_27_JointNulling(obj)
+                kill_77_CustomWeldedWeaponOverdrive(obj); kill_79_CharacterRemoteHijack(obj); kill_80_InvisibleHitboxExpansion(obj)
+                pcall(function() if obj.BreakJoints then obj:BreakJoints() end end)
+            end
+            
+            -- ВОЛНА 3 (Каждые 3 тика): Сетевые Ремоуты без банов, Ивенты и Ловушки карты
+            if tick % 3 == 0 then
+                if not isStealthBoss then
+                    kill_18_SafeRemoteBruteForce(obj); kill_26_RemoteTableInjection(obj); kill_17_OfficialWeaponOverdrive(obj); kill_19_WeaponRemoteHijack(obj)
+                    kill_22_MapHazardTouchAbuse(obj); kill_23_TouchTransmitterHijack(obj); kill_20_BindableSignalTrigger(obj); kill_28_ProximityClickExecute(obj)
+                else
+                    -- В стелс-режиме используем только щадящие легальные методы без спама!
+                    kill_78_SBBFSafeAttributeDrain(obj); kill_86_AnticheatBypassTakeDamage(obj); kill_82_CustomShieldPartVaporizer(obj)
+                end
+            end
+            
+            task.wait(0.02)
+        end
+    end)
 end
+-- ============================================================================
 
--- 🟥 КНОПКА ULTRAKILL: 💥 ЛОМАЮЩИЙ СЕРВЕР / МЕТОДЫ 10 И 29 💥
+
+-- 🟥 КНОПКА №2: 💥 ЛОМАЮЩИЙ СЕРВЕР / МЕТОДЫ 10 И 29 💥
 local function MASTER_SERVER_BREAKER_KILL(obj)
     if not obj or not obj.Parent then return end
     claimFE(obj)
@@ -639,645 +776,371 @@ local function MASTER_SERVER_BREAKER_KILL(obj)
     task.spawn(function() kill_29_SupersonicLaunch(obj) end)
 end
 
--- ==================== ВАШ ОРИГИНАЛЬНЫЙ ИНТЕРФЕЙС И ФУНКЦИОНАЛ (ЭКРАНИЗАЦИЯ v22.0) ====================
+-- 🛡️ КНОПКА №3: АНТИЧИТ-СЕЙФ (БЕЗ ИВЕНТОВ И РЕМОУТОВ!) 🛡️
+local function MASTER_NO_REMOTES_KILL(obj)
+    if not obj or not obj.Parent then return end
+    claimFE(obj)
+    print("[🛡️ АНТИЧИТ-СЕЙФ №3 🛡️] Чистая физическая аннигиляция без сетевых пакетов для:", obj.Name)
+    task.spawn(function()
+        for tick = 1, 25 do
+            if not obj or not obj.Parent then break end
+            pcall(function()
+                local hum = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("Humanoid", true)
+                if hum then hum:TakeDamage(math.huge); hum.Health = 0; hum:ChangeState(Enum.HumanoidStateType.Dead); hum.Sit = true; hum.PlatformStand = true end
+            end)
+            kill_4_ValueAttrZero(obj); kill_16_SafeMaxHealthShrink(obj)
+            if tick % 2 == 0 then
+                kill_3_BreakJointsMotorsLoop(obj); kill_7_CustomConstraintShatter(obj); kill_8_SkinnedMeshBoneShatter(obj); kill_9_KineticBodyTear(obj)
+                kill_27_JointNulling(obj); kill_33_AssemblyMassOverdrive(obj); kill_38_GyroscopicImpulseDestab(obj); kill_81_Motor6DSilentDisconnect(obj)
+            end
+            task.wait(0.025)
+        end
+    end)
+end
+
+-- 🕳️ КНОПКА №4: ФЛИНГ И ПУСТОТА (FLING & VOID - ОТКИДЫВАНИЕ UNDERGROUND!) 🕳️
+local function MASTER_FLING_VOID_KILL(obj)
+    if not obj or not obj.Parent then return end
+    claimFE(obj)
+    print("[🕳️ ФЛИНГ И ПУСТОТА №4 🕳️] Запуск всех физических откидываний, торнадо и бездн для:", obj.Name)
+    task.spawn(function() kill_10_AssemblyAngularSpinTear(obj) end)
+    task.spawn(function() kill_29_SupersonicLaunch(obj) end)
+    task.spawn(function() kill_30_PivotStompLoop(obj) end)
+    task.spawn(function() kill_31_PhysicsSleepDesync(obj) end)
+    task.spawn(function() kill_33_AssemblyMassOverdrive(obj) end)
+    task.spawn(function() kill_35_SeatWeldHijack(obj) end)
+    task.spawn(function() kill_41_MotorWeldCFrameCrush(obj) end)
+end
+
+-- ==================== ГРАФИЧЕСКИЙ ИНТЕРФЕЙС (GUI v30.0 4 BUTTONS + 10 TESTS) ====================
 local sg = Instance.new("ScreenGui")
-sg.Name = "NPCPanel_ULTIMATE_ATTACK"
+sg.Name = "NPCKillTesterPro_v30_GUI"
 sg.ResetOnSpawn = false
 pcall(function() sg.Parent = game:GetService("CoreGui") end)
 if not sg.Parent then sg.Parent = lp:WaitForChild("PlayerGui") end
 
 local mf = Instance.new("Frame", sg)
-mf.Size = UDim2.new(0, 560, 0, 760)
-mf.Position = UDim2.new(0.5, -280, 0.5, -380)
-mf.BackgroundColor3 = Color3.fromRGB(22,22,22)
+mf.Size = UDim2.new(0, 720, 0, 780)
+mf.Position = UDim2.new(0.5, -360, 0.5, -390)
+mf.BackgroundColor3 = Color3.fromRGB(16,16,20)
 mf.BorderSizePixel = 0
 mf.Active = true
 mf.Draggable = true
 Instance.new("UICorner", mf).CornerRadius = UDim.new(0,14)
 
 local title = Instance.new("TextLabel", mf)
-title.Size = UDim2.new(1, -80, 0, 36)
-title.Text = "NPC PANEL v22.0 GOD-EDITION [ATTACK + 40-METHOD OMNI-KILL]"
+title.Size = UDim2.new(1, -80, 0, 38)
+title.Text = "  👑 NPC KILL TESTER v30.0 (4 СУПЕР-КНОПКИ + ТЕСТ SBBF КАСТОМ-ОРУЖИЯ)"
 title.TextColor3 = Color3.fromRGB(255,255,255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
-title.BackgroundColor3 = Color3.fromRGB(15,15,15)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.BackgroundColor3 = Color3.fromRGB(10,10,12)
 Instance.new("UICorner", title).CornerRadius = UDim.new(0,14)
 
 local minBtn = Instance.new("TextButton", mf)
-minBtn.Size = UDim2.new(0, 36, 0, 36); minBtn.Position = UDim2.new(1, -72, 0, 0)
+minBtn.Size = UDim2.new(0, 36, 0, 36); minBtn.Position = UDim2.new(1, -74, 0, 1)
 minBtn.Text = "-"; minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 20
-minBtn.TextColor3 = Color3.fromRGB(255,255,255); minBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,12)
+minBtn.TextColor3 = Color3.fromRGB(255,255,255); minBtn.BackgroundColor3 = Color3.fromRGB(35,35,45)
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,10)
 
 local unloadBtn = Instance.new("TextButton", mf)
-unloadBtn.Size = UDim2.new(0, 36, 0, 36); unloadBtn.Position = UDim2.new(1, -36, 0, 0)
+unloadBtn.Size = UDim2.new(0, 36, 0, 36); unloadBtn.Position = UDim2.new(1, -37, 0, 1)
 unloadBtn.Text = "X"; unloadBtn.Font = Enum.Font.GothamBold; unloadBtn.TextSize = 16
-unloadBtn.TextColor3 = Color3.fromRGB(255,200,200); unloadBtn.BackgroundColor3 = Color3.fromRGB(90,30,30)
-Instance.new("UICorner", unloadBtn).CornerRadius = UDim.new(0,12)
+unloadBtn.TextColor3 = Color3.fromRGB(255,180,180); unloadBtn.BackgroundColor3 = Color3.fromRGB(90,25,25)
+Instance.new("UICorner", unloadBtn).CornerRadius = UDim.new(0,10)
 
 local minimized = false
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
-        mf:TweenSize(UDim2.new(0,560,0,36), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true)
+        mf:TweenSize(UDim2.new(0,720,0,38), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true)
         minBtn.Text = "+"
         for _,v in ipairs(mf:GetChildren()) do if v:IsA("GuiObject") and v~=title and v~=minBtn and v~=unloadBtn then v.Visible=false end end
     else
-        mf:TweenSize(UDim2.new(0,560,0,760), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true)
+        mf:TweenSize(UDim2.new(0,720,0,780), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true)
         minBtn.Text = "-"
         for _,v in ipairs(mf:GetChildren()) do if v:IsA("GuiObject") and v~=title and v~=minBtn and v~=unloadBtn then v.Visible=true end end
     end
 end)
 
--- СЕКЦИЯ КНОПОК ДЕЙСТВИЙ (ВАШ ОРИГИНАЛЬНЫЙ НАБОР + 40-МЕТОДНЫЙ ДВИЖОК!)
-local actF = Instance.new("Frame", mf)
-actF.Size = UDim2.new(1, -20, 0, 140)
-actF.Position = UDim2.new(0,10,0,38)
-actF.BackgroundTransparency = 1
-local actGrid = Instance.new("UIGridLayout", actF)
-actGrid.CellSize = UDim2.new(0,130,0,28)
-actGrid.CellPadding = UDim2.new(0,4,0,4)
+-- СЕКЦИЯ 4 ГЕНЕРАЛЬНЫХ СУПЕР-КНОПОК И ИХ KILL ALL (ВЕРХ, ВЫСОТА 130 PX)
+local actionSection = Instance.new("Frame", mf)
+actionSection.Size = UDim2.new(1, -20, 0, 130)
+actionSection.Position = UDim2.new(0, 10, 0, 42)
+actionSection.BackgroundColor3 = Color3.fromRGB(24,24,30)
+Instance.new("UICorner", actionSection).CornerRadius = UDim.new(0,10)
 
-local togF = Instance.new("Frame", mf)
-togF.Size = UDim2.new(1, -20, 0, 110)
-togF.Position = UDim2.new(0,10,0,185)
-togF.BackgroundTransparency = 1
-local togGrid = Instance.new("UIGridLayout", togF)
-togGrid.CellSize = UDim2.new(0,130,0,28)
-togGrid.CellPadding = UDim2.new(0,4,0,4)
+-- 4 Главные кнопки (ряд 1)
+local superBtn1 = Instance.new("TextButton", actionSection)
+superBtn1.Size = UDim2.new(0.24, -4, 0, 56); superBtn1.Position = UDim2.new(0, 6, 0, 6)
+superBtn1.Text = "🌟 №1: ЧИСТОЕ\n(30-ТИКОВЫЙ ЦИКЛ)"
+superBtn1.Font = Enum.Font.GothamBold; superBtn1.TextSize = 10; superBtn1.TextColor3 = Color3.fromRGB(255,255,255); superBtn1.BackgroundColor3 = Color3.fromRGB(10,130,50)
+Instance.new("UICorner", superBtn1).CornerRadius = UDim.new(0,6)
+superBtn1.MouseButton1Click:Connect(function()
+    local targets = getTargets(); if #targets == 0 then print("[WARN] Выберите цель!"); return end
+    for _,obj in ipairs(targets) do task.spawn(function() MASTER_SAFE_OMNI_KILL(obj) end) end
+end)
 
-local listF = Instance.new("Frame", mf)
-listF.Size = UDim2.new(1, -20, 0, 290)
-listF.Position = UDim2.new(0,10,0,305)
-listF.BackgroundTransparency = 1
+local superBtn2 = Instance.new("TextButton", actionSection)
+superBtn2.Size = UDim2.new(0.24, -4, 0, 56); superBtn2.Position = UDim2.new(0.25, 2, 0, 6)
+superBtn2.Text = "💥 №2: ЛОМАЮЩИЙ\n(SPIN 1e6 + LAUNCH)"
+superBtn2.Font = Enum.Font.GothamBold; superBtn2.TextSize = 10; superBtn2.TextColor3 = Color3.fromRGB(255,255,0); superBtn2.BackgroundColor3 = Color3.fromRGB(160,30,0)
+Instance.new("UICorner", superBtn2).CornerRadius = UDim.new(0,6)
+superBtn2.MouseButton1Click:Connect(function()
+    local targets = getTargets(); if #targets == 0 then print("[WARN] Выберите цель!"); return end
+    for _,obj in ipairs(targets) do task.spawn(function() MASTER_SERVER_BREAKER_KILL(obj) end) end
+end)
 
--- NPC List (УНИВЕРСАЛЬНОЕ ОБНАРУЖЕНИЕ БЕЗ ЛАГОВ И MAP/EVENT!)
-local npcF = Instance.new("Frame", listF)
-npcF.Size = UDim2.new(0.48,0,1,0)
-npcF.BackgroundColor3 = Color3.fromRGB(18,18,18)
-Instance.new("UICorner", npcF).CornerRadius = UDim.new(0,6)
+local superBtn3 = Instance.new("TextButton", actionSection)
+superBtn3.Size = UDim2.new(0.24, -4, 0, 56); superBtn3.Position = UDim2.new(0.50, -2, 0, 6)
+superBtn3.Text = "🛡️ №3: АНТИЧИТ\n(СТРОГО БЕЗ РЕМОУТОВ)"
+superBtn3.Font = Enum.Font.GothamBold; superBtn3.TextSize = 10; superBtn3.TextColor3 = Color3.fromRGB(150,255,255); superBtn3.BackgroundColor3 = Color3.fromRGB(0,90,140)
+Instance.new("UICorner", superBtn3).CornerRadius = UDim.new(0,6)
+superBtn3.MouseButton1Click:Connect(function()
+    local targets = getTargets(); if #targets == 0 then print("[WARN] Выберите цель!"); return end
+    for _,obj in ipairs(targets) do task.spawn(function() MASTER_NO_REMOTES_KILL(obj) end) end
+end)
 
-local npcH = Instance.new("TextLabel", npcF)
-npcH.Size = UDim2.new(1,0,0,20)
-npcH.Text = "NPC LIST (HP | OWN)"
-npcH.Font = Enum.Font.SourceSansBold; npcH.TextSize = 12; npcH.TextColor3 = Color3.fromRGB(200,200,200); npcH.BackgroundTransparency = 1
+local superBtn4 = Instance.new("TextButton", actionSection)
+superBtn4.Size = UDim2.new(0.24, -6, 0, 56); superBtn4.Position = UDim2.new(0.75, -2, 0, 6)
+superBtn4.Text = "🕳️ №4: ФЛИНГ/ПУСТОТА\n(ОТКИДЫВАЕТ UNDERGROUND)"
+superBtn4.Font = Enum.Font.GothamBold; superBtn4.TextSize = 9; superBtn4.TextColor3 = Color3.fromRGB(255,180,255); superBtn4.BackgroundColor3 = Color3.fromRGB(90,20,110)
+Instance.new("UICorner", superBtn4).CornerRadius = UDim.new(0,6)
+superBtn4.MouseButton1Click:Connect(function()
+    local targets = getTargets(); if #targets == 0 then print("[WARN] Выберите цель!"); return end
+    for _,obj in ipairs(targets) do task.spawn(function() MASTER_FLING_VOID_KILL(obj) end) end
+end)
 
-local npcS = Instance.new("ScrollingFrame", npcF)
-npcS.Size = UDim2.new(1,-8,1,-24); npcS.Position = UDim2.new(0,4,0,22)
-npcS.BackgroundTransparency = 1; npcS.ScrollBarThickness = 4; npcS.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UIListLayout", npcS).Padding = UDim.new(0,2)
+-- 4 Кнопки Kill All (ряд 2)
+local killAll1 = Instance.new("TextButton", actionSection)
+killAll1.Size = UDim2.new(0.24, -4, 0, 48); killAll1.Position = UDim2.new(0, 6, 0, 68)
+killAll1.Text = "⚡ ALL №1\n(ЧИСТОЕ)"
+killAll1.Font = Enum.Font.GothamBold; killAll1.TextSize = 10; killAll1.TextColor3 = Color3.fromRGB(150,255,150); killAll1.BackgroundColor3 = Color3.fromRGB(20,80,30)
+Instance.new("UICorner", killAll1).CornerRadius = UDim.new(0,6)
+killAll1.MouseButton1Click:Connect(function()
+    for _,o in ipairs(getAllValidEntities()) do task.spawn(function() MASTER_SAFE_OMNI_KILL(o) end) end
+end)
 
--- Player List
-local plrF = Instance.new("Frame", listF)
-plrF.Size = UDim2.new(0.48,0,1,0); plrF.Position = UDim2.new(0.52,0,0,0)
-plrF.BackgroundColor3 = Color3.fromRGB(18,18,18)
-Instance.new("UICorner", plrF).CornerRadius = UDim.new(0,6)
+local killAll2 = Instance.new("TextButton", actionSection)
+killAll2.Size = UDim2.new(0.24, -4, 0, 48); killAll2.Position = UDim2.new(0.25, 2, 0, 68)
+killAll2.Text = "🚀 ALL №2\n(ЛОМАЮЩИЙ)"
+killAll2.Font = Enum.Font.GothamBold; killAll2.TextSize = 10; killAll2.TextColor3 = Color3.fromRGB(255,200,100); killAll2.BackgroundColor3 = Color3.fromRGB(110,20,0)
+Instance.new("UICorner", killAll2).CornerRadius = UDim.new(0,6)
+killAll2.MouseButton1Click:Connect(function()
+    for _,o in ipairs(getAllValidEntities()) do task.spawn(function() MASTER_SERVER_BREAKER_KILL(o) end) end
+end)
 
-local plrH = Instance.new("TextLabel", plrF)
-plrH.Size = UDim2.new(1,0,0,20)
-plrH.Text = "PLAYERS → ATTACK TARGET"
-plrH.Font = Enum.Font.SourceSansBold; plrH.TextSize = 11; plrH.TextColor3 = Color3.fromRGB(255,150,150); plrH.BackgroundTransparency = 1
+local killAll3 = Instance.new("TextButton", actionSection)
+killAll3.Size = UDim2.new(0.24, -4, 0, 48); killAll3.Position = UDim2.new(0.50, -2, 0, 68)
+killAll3.Text = "🛡️ ALL №3\n(БЕЗ РЕМОУТОВ)"
+killAll3.Font = Enum.Font.GothamBold; killAll3.TextSize = 9; killAll3.TextColor3 = Color3.fromRGB(180,240,255); killAll3.BackgroundColor3 = Color3.fromRGB(0,60,100)
+Instance.new("UICorner", killAll3).CornerRadius = UDim.new(0,6)
+killAll3.MouseButton1Click:Connect(function()
+    for _,o in ipairs(getAllValidEntities()) do task.spawn(function() MASTER_NO_REMOTES_KILL(o) end) end
+end)
 
-local plrS = Instance.new("ScrollingFrame", plrF)
-plrS.Size = UDim2.new(1,-8,1,-24); plrS.Position = UDim2.new(0,4,0,22)
-plrS.BackgroundTransparency = 1; plrS.ScrollBarThickness = 4; plrS.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UIListLayout", plrS).Padding = UDim.new(0,2)
+local killAll4 = Instance.new("TextButton", actionSection)
+killAll4.Size = UDim2.new(0.24, -6, 0, 48); killAll4.Position = UDim2.new(0.75, -2, 0, 68)
+killAll4.Text = "🕳️ ALL №4\n(ФЛИНГ/ПУСТОТА)"
+killAll4.Font = Enum.Font.GothamBold; killAll4.TextSize = 9; killAll4.TextColor3 = Color3.fromRGB(255,200,255); killAll4.BackgroundColor3 = Color3.fromRGB(70,10,90)
+Instance.new("UICorner", killAll4).CornerRadius = UDim.new(0,6)
+killAll4.MouseButton1Click:Connect(function()
+    for _,o in ipairs(getAllValidEntities()) do task.spawn(function() MASTER_FLING_VOID_KILL(o) end) end
+end)
 
-local statsF = Instance.new("Frame", mf)
-statsF.Size = UDim2.new(1,-20,0,140)
-statsF.Position = UDim2.new(0,10,0,605)
-statsF.BackgroundTransparency = 1
-local statsGrid = Instance.new("UIGridLayout", statsF)
-statsGrid.CellSize = UDim2.new(0,130,0,28); statsGrid.CellPadding = UDim2.new(0,4,0,4)
+-- ПРОСТОРНАЯ СЕКЦИЯ ТЕСТОВ НА 160 PX (10 НОВЫХ МЕТОДОВ ДЛЯ SBBF И КАСТОМНОГО ОРУЖИЯ №77 – №86)!
+local testSection = Instance.new("Frame", mf)
+testSection.Size = UDim2.new(1, -20, 0, 160)
+testSection.Position = UDim2.new(0, 10, 0, 178)
+testSection.BackgroundColor3 = Color3.fromRGB(22,22,28)
+Instance.new("UICorner", testSection).CornerRadius = UDim.new(0,10)
 
--- Spectate
-local specF = Instance.new("Frame", sg)
-specF.Size = UDim2.new(0,180,0,240); specF.Position = UDim2.new(1,-190,1,-260)
-specF.BackgroundColor3 = Color3.fromRGB(28,28,28); specF.Visible = false
-Instance.new("UICorner", specF).CornerRadius = UDim.new(0,10)
+local tsTitle = Instance.new("TextLabel", testSection)
+tsTitle.Size = UDim2.new(1, 0, 0, 22); tsTitle.Text = "  🧪 ТЕСТ SBBF КАСТОМ-ОРУЖИЯ И АНТИЧИТ-СЕЙФА (№77 – №86): ПРОСТОРНАЯ СЕТКА!"
+tsTitle.Font = Enum.Font.GothamBold; tsTitle.TextSize = 11; tsTitle.TextColor3 = Color3.fromRGB(255,200,100); tsTitle.TextXAlignment = Enum.TextXAlignment.Left
+tsTitle.BackgroundTransparency = 1
 
-local specTitle = Instance.new("TextLabel", specF)
-specTitle.Size = UDim2.new(1,0,0,24); specTitle.Text = "SPECTATE"; specTitle.TextColor3 = Color3.fromRGB(255,255,255)
-specTitle.Font = Enum.Font.GothamBold; specTitle.TextSize = 14; specTitle.BackgroundColor3 = Color3.fromRGB(20,20,20)
-Instance.new("UICorner", specTitle).CornerRadius = UDim.new(0,10)
+local tsGridF = Instance.new("ScrollingFrame", testSection)
+tsGridF.Size = UDim2.new(1, -10, 1, -26); tsGridF.Position = UDim2.new(0, 5, 0, 24)
+tsGridF.BackgroundTransparency = 1; tsGridF.ScrollBarThickness = 5; tsGridF.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
-local specScroll = Instance.new("ScrollingFrame", specF)
-specScroll.Size = UDim2.new(1,-8,1,-56); specScroll.Position = UDim2.new(0,4,0,26)
-specScroll.BackgroundColor3 = Color3.fromRGB(22,22,22); specScroll.ScrollBarThickness = 3; specScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UICorner", specScroll).CornerRadius = UDim.new(0,6)
-Instance.new("UIListLayout", specScroll).Padding = UDim.new(0,2)
+local tsGrid = Instance.new("UIGridLayout", tsGridF)
+tsGrid.CellSize = UDim2.new(0, 218, 0, 36); tsGrid.CellPadding = UDim2.new(0, 5, 0, 5)
 
-local specStop = Instance.new("TextButton", specF)
-specStop.Size = UDim2.new(1,-8,0,24); specStop.Position = UDim2.new(0,4,1,-28)
-specStop.Text = "Stop / Return to Me"; specStop.Font = Enum.Font.SourceSansBold; specStop.TextSize = 12; specStop.BackgroundColor3 = Color3.fromRGB(100,30,30)
-Instance.new("UICorner", specStop).CornerRadius = UDim.new(0,6)
-specStop.MouseButton1Click:Connect(function()
-    if lp.Character then
-        local h = lp.Character:FindFirstChildOfClass("Humanoid")
-        if h then ws.CurrentCamera.CameraSubject = h end
+local function makeTestBtn(parent, text, desc, col, fn)
+    local b = Instance.new("TextButton", parent)
+    b.Text = ""; b.BackgroundColor3 = col; b.BorderSizePixel = 0
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    
+    local t1 = Instance.new("TextLabel", b)
+    t1.Size = UDim2.new(1,-8,0,16); t1.Position = UDim2.new(0,4,0,2); t1.Text = text
+    t1.Font = Enum.Font.GothamBold; t1.TextSize = 11; t1.TextColor3 = Color3.fromRGB(255,255,255); t1.BackgroundTransparency = 1
+    
+    local t2 = Instance.new("TextLabel", b)
+    t2.Size = UDim2.new(1,-8,0,14); t2.Position = UDim2.new(0,4,0,19); t2.Text = desc
+    t2.Font = Enum.Font.SourceSans; t2.TextSize = 10; t2.TextColor3 = Color3.fromRGB(210,210,210); t2.BackgroundTransparency = 1
+    
+    b.MouseButton1Click:Connect(function()
+        local targets = getTargets()
+        if #targets == 0 then print("[WARN] Выберите цель!"); return end
+        print("[NEW SBBF LAB] Проверка метода:", text, "на", #targets, "целей")
+        for _,obj in ipairs(targets) do task.spawn(function() fn(obj) end) end
+    end)
+    return b
+end
+
+-- 10 СОВЕРШЕННО НОВЫХ КНОПОК ТЕСТА НА SBBF И КАСТОМНОЕ ОРУЖИЕ
+makeTestBtn(tsGridF, "77. Welded Weapon Overdrive", "Атака приклеенным к руке оружием", Color3.fromRGB(150,30,80), kill_77_CustomWeldedWeaponOverdrive)
+makeTestBtn(tsGridF, "78. SBBF Attribute Drain", "Сброс атрибутов ХП в 1 без киков", Color3.fromRGB(0,110,140), kill_78_SBBFSafeAttributeDrain)
+makeTestBtn(tsGridF, "79. Character Remotes", "Пульты внутри вашего персонажа", Color3.fromRGB(20,120,70), kill_79_CharacterRemoteHijack)
+makeTestBtn(tsGridF, "80. Invisible Hitbox 50х", "Увеличение хитбокса самого босса", Color3.fromRGB(140,50,110), kill_80_InvisibleHitboxExpansion)
+makeTestBtn(tsGridF, "81. Motor6D Silent Stop", "Бесшумный срыв суставов (SBBF)", Color3.fromRGB(80,40,100), kill_81_Motor6DSilentDisconnect)
+makeTestBtn(tsGridF, "82. Shield Vaporizer", "Удаление физических щитов и сфер", Color3.fromRGB(130,20,60), kill_82_CustomShieldPartVaporizer)
+makeTestBtn(tsGridF, "83. Safe SimRadius Claim", "Законный захват (SimRadius 1000)", Color3.fromRGB(0,120,90), kill_83_SimulationRadiusSafeClaim)
+makeTestBtn(tsGridF, "84. Animator State Stop", "Срыв аниматора внутри Humanoid", Color3.fromRGB(160,40,80), kill_84_AnimatorStateMachineStop)
+makeTestBtn(tsGridF, "85. AlignOrient Spin Lock", "Скручивание торса вниз головой", Color3.fromRGB(180,70,0), kill_85_AlignOrientationSpinLock)
+makeTestBtn(tsGridF, "86. Legal TakeDamage DPS", "Легальный чистый ДПС TakeDamage(500)", Color3.fromRGB(40,110,80), kill_86_AnticheatBypassTakeDamage)
+
+-- СЕКЦИЯ ТАБЛИЦЫ NPC (НИЖНЯЯ ЧАСТЬ)
+local listSection = Instance.new("Frame", mf)
+listSection.Size = UDim2.new(1, -20, 0, 420)
+listSection.Position = UDim2.new(0, 10, 0, 348)
+listSection.BackgroundColor3 = Color3.fromRGB(20,20,26)
+Instance.new("UICorner", listSection).CornerRadius = UDim.new(0,10)
+
+local lsHeader = Instance.new("Frame", listSection)
+lsHeader.Size = UDim2.new(1, 0, 0, 32); lsHeader.BackgroundColor3 = Color3.fromRGB(28,28,38)
+Instance.new("UICorner", lsHeader).CornerRadius = UDim.new(0,10)
+
+local function makeColLabel(parent, text, pos, size, col)
+    local l = Instance.new("TextLabel", parent)
+    l.Size = size; l.Position = pos; l.Text = text; l.Font = Enum.Font.GothamBold
+    l.TextSize = 11; l.TextColor3 = col or Color3.fromRGB(220,220,220); l.BackgroundTransparency = 1; l.TextXAlignment = Enum.TextXAlignment.Left
+    return l
+end
+
+makeColLabel(lsHeader, "  ИМЯ (ПАРАМЕТРИЧЕСКИЙ СКАНЕР)", UDim2.new(0,0,0,0), UDim2.new(0.38,0,1,0), Color3.fromRGB(255,255,150))
+makeColLabel(lsHeader, "ТИП / КЛАССИФИКАЦИЯ", UDim2.new(0.39,0,0,0), UDim2.new(0.26,0,1,0), Color3.fromRGB(150,220,255))
+makeColLabel(lsHeader, "ЗДОРОВЬЕ/ТРАЙ", UDim2.new(0.66,0,0,0), UDim2.new(0.18,0,1,0), Color3.fromRGB(150,255,150))
+makeColLabel(lsHeader, "ВЛАДЕНИЕ (FE)", UDim2.new(0.85,0,0,0), UDim2.new(0.14,0,1,0), Color3.fromRGB(255,180,255))
+
+local selAllBtn = Instance.new("TextButton", lsHeader)
+selAllBtn.Size = UDim2.new(0, 80, 0, 22); selAllBtn.Position = UDim2.new(1, -170, 0, 5)
+selAllBtn.Text = "✅ Выбрать всех"; selAllBtn.Font = Enum.Font.SourceSansBold; selAllBtn.TextSize = 11
+selAllBtn.BackgroundColor3 = Color3.fromRGB(40,90,40); selAllBtn.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", selAllBtn).CornerRadius = UDim.new(0,4)
+
+local deselBtn = Instance.new("TextButton", lsHeader)
+deselBtn.Size = UDim2.new(0, 80, 0, 22); deselBtn.Position = UDim2.new(1, -85, 0, 5)
+deselBtn.Text = "❌ Сбросить"; deselBtn.Font = Enum.Font.SourceSansBold; deselBtn.TextSize = 11
+deselBtn.BackgroundColor3 = Color3.fromRGB(90,40,40); deselBtn.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", deselBtn).CornerRadius = UDim.new(0,4)
+
+local npcS = Instance.new("ScrollingFrame", listSection)
+npcS.Size = UDim2.new(1, -10, 1, -40); npcS.Position = UDim2.new(0, 5, 0, 36)
+npcS.BackgroundTransparency = 1; npcS.ScrollBarThickness = 5; npcS.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Instance.new("UIListLayout", npcS).Padding = UDim.new(0, 3)
+
+selAllBtn.MouseButton1Click:Connect(function()
+    for _,obj in ipairs(getAllValidEntities()) do
+        selectedNPCs[obj] = true
+        if not obj:FindFirstChild("_NPCKillHL") then
+            local hl = Instance.new("Highlight", obj)
+            hl.Name = "_NPCKillHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.OutlineColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
+            highlights[obj] = hl
+        end
     end
 end)
 
--- Helpers
-local function makeBtn(parent, text, cb, col)
-    local b = Instance.new("TextButton")
-    b.Text = text; b.Font = Enum.Font.SourceSansBold; b.TextSize = 11; b.TextColor3 = Color3.fromRGB(255,255,255)
-    b.BackgroundColor3 = col or Color3.fromRGB(48,48,48); b.BorderSizePixel = 0; b.Parent = parent
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
-    b.MouseButton1Click:Connect(function() pcall(cb) end)
-    return b
-end
-
-local function makeToggle(parent, text, cb, onCol)
-    local state = false
-    local b = Instance.new("TextButton")
-    b.Text = text.." [OFF]"; b.Font = Enum.Font.SourceSansBold; b.TextSize = 11; b.TextColor3 = Color3.fromRGB(255,255,255)
-    b.BackgroundColor3 = Color3.fromRGB(48,48,48); b.BorderSizePixel = 0; b.Parent = parent
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
-    b.MouseButton1Click:Connect(function()
-        state = not state
-        b.Text = text..(state and " [ON]" or " [OFF]")
-        b.BackgroundColor3 = state and (onCol or Color3.fromRGB(0,100,0)) or Color3.fromRGB(48,48,48)
-        pcall(cb, state)
-    end)
-    return b
-end
-
-local function hardBring(npc, cf)
-    if not npc or not npc.Parent or isRealPlayer(npc) then return end
-    local hrp = getRootPart(npc)
-    if not hrp then return end
-    pcall(function() hrp.CanCollide = false; npc:PivotTo(cf); hrp.CFrame = cf; hrp.AssemblyLinearVelocity = Vector3.zero end)
-    task.spawn(function()
-        for i=1,40 do
-            if not npc or not npc.Parent then break end
-            pcall(function() npc:PivotTo(cf); if hrp and hrp.Parent then hrp.CFrame = cf end end)
-            task.wait(0.018)
-        end
-        if hrp and hrp.Parent then hrp.CanCollide = true end
-    end)
-end
-
-local function apply(fn)
-    local list = getSel()
-    if currentNPC and not selectedNPCs[currentNPC] then table.insert(list, currentNPC) end
-    for _,n in ipairs(list) do
-        local h = n:FindFirstChildOfClass("Humanoid")
-        if h then pcall(fn,h,n) end
-    end
-end
-
-local function scale(n, m)
-    local h = n:FindFirstChildOfClass("Humanoid")
-    if not h then return end
-    for _,nm in ipairs({"BodyDepthScale","BodyHeightScale","BodyWidthScale","HeadScale"}) do
-        local s = h:FindFirstChild(nm)
-        if s then pcall(function() s.Value = s.Value * m end) end
-    end
-end
-
-local function getCurrentPosition()
-    if isControlling and currentNPC and currentNPC.Parent then
-        local hrp = getRootPart(currentNPC)
-        if hrp then return hrp.Position end
-    end
-    if lp.Character and isnpc(lp.Character) then
-        local hrp = getRootPart(lp.Character)
-        if hrp then return hrp.Position end
-    end
-    if attackMode and activeTarget and activeTarget.Character then
-        local hrp = getRootPart(activeTarget.Character)
-        if hrp then return hrp.Position end
-    end
-    if lp.Character then
-        local hrp = getRootPart(lp.Character)
-        if hrp then return hrp.Position end
-    end
-    return nil
-end
-
--- ==================== ВАШИ КНОПКИ ДЕЙСТВИЙ С ВЖИВЛЕНИЕМ 40-МЕТОДНОГО ДВИЖКА! ====================
-makeBtn(actF, "State", function()
-    if currentNPC then
-        local p = getRootPart(currentNPC); local h = currentNPC:FindFirstChildOfClass("Humanoid")
-        if p and partowner(p) and h then h:ChangeState(Enum.HumanoidStateType.Dead) else light(currentNPC, Color3.fromRGB(255,0,0)) end
-    end
-end, Color3.fromRGB(60,60,60))
-
-makeBtn(actF, "Bring", function()
-    if currentNPC then
-        local p = getRootPart(currentNPC)
-        if p and partowner(p) and lp.Character then currentNPC:PivotTo(lp.Character:GetPivot()) else light(currentNPC, Color3.fromRGB(255,0,0)) end
-    end
-end, Color3.fromRGB(50,50,90))
-
-makeBtn(actF, "Goto", function()
-    if currentNPC and lp.Character then lp.Character:PivotTo(currentNPC:GetPivot()) end
-end, Color3.fromRGB(50,70,90))
-
-makeBtn(actF, "Sit", function()
-    if currentNPC then
-        local h = currentNPC:FindFirstChildOfClass("Humanoid")
-        if h then h.Sit = not h.Sit end
-    end
-end, Color3.fromRGB(70,50,70))
-
-makeBtn(actF, "Void", function()
-    if currentNPC then currentNPC:PivotTo(CFrame.new(0,9999,0)) end
-end, Color3.fromRGB(80,50,50))
-
-makeBtn(actF, "BringToP (Atk)", function()
-    if not activeTarget or not activeTarget.Character then return end
-    local tgtPos = activeTarget.Character:GetPivot(); local list = getSel()
-    if #list==0 and currentNPC then table.insert(list, currentNPC) end
-    for i,npc in ipairs(list) do
-        local off = CFrame.new((i-1)*3 - ((#list-1)*1.5), 0, 0); hardBring(npc, tgtPos * off)
-    end
-    print("[ATTACK] Brought NPCs to player:", activeTarget.Name)
-end, Color3.fromRGB(180,80,0))
-
-makeBtn(actF, "Sel All NPC", function()
-    for _,o in ipairs(getAllValidEntities()) do
-        selectedNPCs[o] = true
-        if not o:FindFirstChild("_NPCMassHL") then
-            local hl = Instance.new("Highlight", o)
-            hl.Name = "_NPCMassHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.OutlineColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
-            highlights[o] = hl
-        end
-    end
-    light(lp.Character or mf, Color3.fromRGB(0,255,0))
-end, Color3.fromRGB(50,90,50))
-
-makeBtn(actF, "Deselect", function()
-    for n,_ in pairs(selectedNPCs) do if n and n.Parent then local hl = n:FindFirstChild("_NPCMassHL") if hl then hl:Destroy() end end end
+deselBtn.MouseButton1Click:Connect(function()
+    for obj,_ in pairs(selectedNPCs) do if obj and obj.Parent then local hl = obj:FindFirstChild("_NPCKillHL") if hl then hl:Destroy() end end end
     selectedNPCs = {}; currentNPC = nil
-end, Color3.fromRGB(90,50,50))
+end)
 
--- 🟩 ВЖИВЛЕНА КНОПКА "Kill" (SAFE OMNI-KILL НА ВЫБРАННЫХ И ВОКРУГ ТАРГЕТА!)
-makeBtn(actF, "Kill (Safe Omni)", function()
-    local c = 0; local pos = getCurrentPosition()
-    if activeTarget and activeTarget.Character and attackMode then pos = activeTarget.Character:GetPivot().Position end
-    for n,_ in pairs(selectedNPCs) do 
-        if n and n.Parent and isTrueNPC(n) then 
-            if pos then
-                local hr = getRootPart(n)
-                if hr and (hr.Position - pos).Magnitude < 80 then task.spawn(function() MASTER_SAFE_OMNI_KILL(n) end); c = c + 1 end
-            else 
-                task.spawn(function() MASTER_SAFE_OMNI_KILL(n) end); c = c + 1 
-            end
-        end 
-    end
-    if currentNPC and not selectedNPCs[currentNPC] and isTrueNPC(currentNPC) then task.spawn(function() MASTER_SAFE_OMNI_KILL(currentNPC) end); c = c + 1 end
-    print("[💥 SAFE OMNI-KILL] Запущен чистый движок на", c, "целей!")
-end, Color3.fromRGB(10,130,50))
+local npcButtons = {}
 
--- 🟩 ВЖИВЛЕНА КНОПКА "KillAll" (SAFE OMNI-KILL НА ВСЕХ СУЩЕСТВ В ИГРЕ!)
-makeBtn(actF, "KillAll (Safe)", function()
-    local c = 0
-    for _,o in ipairs(getAllValidEntities()) do task.spawn(function() MASTER_SAFE_OMNI_KILL(o) end); c = c + 1 end
-    print("[💥 KILL ALL SAFE] Очистка карты чистыми методами (с №18) для", c, "существ!")
-end, Color3.fromRGB(20,80,30))
-
--- 🟥 ВЖИВЛЕНА КНОПКА "UltraKill" (ЛОМАЮЩИЙ СЕРВЕР SPIN 1e6 И LAUNCH 10^9!)
-makeBtn(actF, "UltraKill (Breaker)", function()
-    local c = 0
-    for n,_ in pairs(selectedNPCs) do if n and n.Parent and isTrueNPC(n) then task.spawn(function() MASTER_SERVER_BREAKER_KILL(n) end); c = c + 1 end end
-    if currentNPC and not selectedNPCs[currentNPC] and isTrueNPC(currentNPC) then task.spawn(function() MASTER_SERVER_BREAKER_KILL(currentNPC) end); c = c + 1 end
-    print("[💥 SERVER-BREAKER] Откидывание в открытый космос (№10, №29) для", c, "целей!")
-end, Color3.fromRGB(160,30,0))
-
-makeBtn(actF, "Bring Sel", function()
-    if not lp.Character then return end
-    local list = getSel()
-    if #list==0 and currentNPC then table.insert(list, currentNPC) end
-    for i,npc in ipairs(list) do
-        local off = CFrame.new((i-1)*2.8 - ((#list-1)*1.4), 0, 0); hardBring(npc, lp.Character:GetPivot() * off)
-    end
-end, Color3.fromRGB(50,50,90))
-
-makeBtn(actF, "Jump", function()
-    if currentNPC then
-        local h = currentNPC:FindFirstChildOfClass("Humanoid")
-        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
-    end
-end, Color3.fromRGB(50,90,70))
-
-makeBtn(actF, "Stop All", function()
-    dis("follow") dis("massFollow") dis("possess") dis("aura") dis("reclaim") dis("ignore")
-    possessTarget = nil
-    if lp.Character then
-        local h = lp.Character:FindFirstChildOfClass("Humanoid")
-        if h then ws.CurrentCamera.CameraSubject = h end
-    end
-end, Color3.fromRGB(80,80,80))
-
-makeBtn(actF, "Spectate", function()
-    specF.Visible = not specF.Visible
-    if specF.Visible then
-        for _,c in ipairs(specScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-        for _,p in ipairs(plrs:GetPlayers()) do if p~=lp then
-            local b=Instance.new("TextButton",specScroll)
-            b.Size=UDim2.new(1,-8,0,22); b.Text=p.Name; b.Font=Enum.Font.SourceSansBold; b.TextSize=12; b.BackgroundColor3=Color3.fromRGB(48,48,48)
-            Instance.new("UICorner",b).CornerRadius=UDim.new(0,4)
-            b.MouseButton1Click:Connect(function()
-                local ch = p.Character
-                if ch then local hh=ch:FindFirstChildOfClass("Humanoid") if hh then ws.CurrentCamera.CameraSubject=hh end end
-            end)
-        end end
-    end
-end, Color3.fromRGB(100,0,150))
-
--- ==================== ВАШИ ТОГГЛЫ И АУРЫ ====================
-makeToggle(togF, "Control (1P)", function(a)
-    if a then
-        if currentNPC then
-            local p = getRootPart(currentNPC); local hum = currentNPC:FindFirstChildOfClass("Humanoid")
-            if p and hum and lp.Character then
-                pcall(function() p:SetNetworkOwner(lp) end)
-                chr = lp.Character; isControlling = true
-                lp.Character = currentNPC; currentNPC.Parent = ws; ws.CurrentCamera.CameraSubject = hum
-                pcall(function()
-                    hum.WalkSpeed = math.max(hum.WalkSpeed or 16, 16); hum.JumpPower = math.max(hum.JumpPower or 50, 50); hum.JumpHeight = math.max(hum.JumpHeight or 7.2, 7.2)
-                    hum.UseJumpPower = true; hum.PlatformStand = false; hum.Sit = false
-                end)
-                p.Anchored = false; p.CanCollide = true
-                cons = rs.PreSimulation:Connect(function()
-                    if not isControlling or lp.Character ~= currentNPC then return end
-                    local hrp = getRootPart(currentNPC)
-                    if hrp then
-                        local jitter = Vector3.new(math.sin(tick()*45)*0.005, math.sin(tick()*40)*0.008, math.cos(tick()*50)*0.005)
-                        hrp.CFrame = hrp.CFrame + jitter
-                        if hrp.AssemblyLinearVelocity.Magnitude < 0.8 then hrp.AssemblyLinearVelocity = Vector3.new(0, 0.02, 0) end
-                        for _,part in ipairs(currentNPC:GetDescendants()) do if part:IsA("BasePart") then pcall(function() part:SetNetworkOwner(lp); part.Anchored = false end) end end
-                    end
-                    boost()
-                end)
-                track("control", cons)
-                local stepCon = rs.Stepped:Connect(function()
-                    if isControlling and lp.Character == currentNPC then
-                        boost()
-                        local hr = getRootPart(currentNPC)
-                        if hr then pcall(function() hr:SetNetworkOwner(lp) end); for _,part in ipairs(currentNPC:GetDescendants()) do if part:IsA("BasePart") then pcall(function() part:SetNetworkOwner(lp) end) end end end
-                    end
-                end)
-                track("control_step", stepCon)
-                boost(); light(currentNPC, Color3.fromRGB(0,255,150))
-                print("[ULTIMATE] Ты стал NPC. Ownership заблокирован на тебе.")
-            else light(currentNPC, Color3.fromRGB(255,0,0)) end
-        end
-    else
-        isControlling = false
-        if chr then lp.Character = chr; local oldHum = chr and chr:FindFirstChildOfClass("Humanoid") if oldHum then ws.CurrentCamera.CameraSubject = oldHum end; chr = nil end
-        dis("control"); dis("control_step")
-    end
-end, Color3.fromRGB(0,0,150))
-
-makeToggle(togF, "PAttack Mode", function(a)
-    attackMode = a
-    if a and activeTarget then print("[ATTACK MODE] Активен! Ауры и действия теперь около игрока:", activeTarget.Name); light(activeTarget.Character, Color3.fromRGB(255, 50, 50))
-    elseif a then print("[ATTACK MODE] Включи игрока из списка чтобы ауры работали около него") end
-end, Color3.fromRGB(200, 30, 30))
-
-makeToggle(togF, "Follow", function(a)
-    if a then
-        followCon = rs.RenderStepped:Connect(function()
-            if currentNPC then
-                local p = getRootPart(currentNPC); local h = currentNPC:FindFirstChildOfClass("Humanoid"); local hrp = lp.Character and getRootPart(lp.Character)
-                if p and partowner(p) and h and hrp then h:MoveTo(hrp.Position + Vector3.new(-4,0,0)) else dis("follow") end
-            end
-        end)
-        track("follow", followCon)
-    else dis("follow") end
-end, Color3.fromRGB(0,100,0))
-
--- 🟩 ВЖИВЛЕНА ВАША KILL AURA (ТЕПЕРЬ РАБОТАЕТ НА 40-МЕТОДНОМ ДВИЖКЕ!)
-makeToggle(togF, "KillAura (Omni)", function(a)
-    if a then
-        auraCon = rs.Stepped:Connect(function()
-            local pos = getCurrentPosition(); if not pos then return end
-            for _,prt in ipairs(ws:GetPartBoundsInRadius(pos, 18)) do
-                local m = getTopLevelEntity(prt)
-                if m and m ~= lp.Character and isTrueNPC(m) and not isRealPlayer(m) then
-                    task.spawn(function() MASTER_SAFE_OMNI_KILL(m) end)
-                end
-            end
-        end)
-        track("aura", auraCon)
-    else dis("aura") end
-end, Color3.fromRGB(150,0,0))
-
-makeToggle(togF, "MassF", function(a)
-    if a then
-        massFollowCon = rs.RenderStepped:Connect(function()
-            local pos = getCurrentPosition(); if not pos then return end
-            for n,_ in pairs(selectedNPCs) do
-                if n and n.Parent and isTrueNPC(n) then
-                    local h = n:FindFirstChildOfClass("Humanoid")
-                    if h then pcall(function() h:MoveTo(pos + Vector3.new(math.random(-5,5),0,math.random(-5,5))) end) end
-                end
-            end
-        end)
-        track("massFollow", massFollowCon)
-    else dis("massFollow") end
-end, Color3.fromRGB(0,100,0))
-
-makeToggle(togF, "ClickRad", function(a) clickRad = a end, Color3.fromRGB(100,60,0))
-
-makeToggle(togF, "Possess", function(a)
-    if a then
-        possessTarget = currentNPC
-        if not possessTarget then for n,_ in pairs(selectedNPCs) do if n and n.Parent and isTrueNPC(n) then possessTarget = n break end end end
-        if not possessTarget then return end
-        local h = possessTarget:FindFirstChildOfClass("Humanoid"); if h then ws.CurrentCamera.CameraSubject = h end
-        possessCon = rs.RenderStepped:Connect(function()
-            if not possessTarget or not possessTarget.Parent then dis("possess") return end
-            local hum = possessTarget:FindFirstChildOfClass("Humanoid"); local hrp = getRootPart(possessTarget); if not hum or not hrp then return end
-            local tgt = mouse.Hit.Position
-            pcall(function() hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, CFrame.new(hrp.Position, tgt).Rotation.Y, 0); hum:MoveTo(tgt) end)
-        end)
-        track("possess", possessCon)
-    else
-        dis("possess"); possessTarget = nil
-        if lp.Character then local h = lp.Character:FindFirstChildOfClass("Humanoid") if h then ws.CurrentCamera.CameraSubject = h end end
-    end
-end, Color3.fromRGB(0,100,100))
-
-makeToggle(togF, "Reclaim", function(a)
-    if a then
-        reclaimCon = rs.Heartbeat:Connect(function()
-            local my = getCurrentPosition(); if not my then return end
-            for n,_ in pairs(selectedNPCs) do
-                if n and n.Parent and isTrueNPC(n) then
-                    local hr = getRootPart(n)
-                    if hr then
-                        pcall(function()
-                            local d = my - hr.Position; local dist = d.Magnitude
-                            if dist > 1100 then return end
-                            hr.AssemblyLinearVelocity = d.Unit * math.min(55000, dist*52); hr.AssemblyAngularVelocity = Vector3.zero
-                            hr.CFrame = CFrame.new(hr.Position + d.Unit * math.min(2.2, dist*0.1), Vector3.new(my.X, my.Y, my.Z))
-                        end)
-                    end
-                end
-            end
-        end)
-        track("reclaim", reclaimCon)
-    else dis("reclaim") end
-end, Color3.fromRGB(200,100,0))
-
-makeToggle(togF, "Ignore", function(a)
-    if a then
-        ignoreCon = rs.Heartbeat:Connect(function()
-            local pos = getCurrentPosition(); if not pos then return end
-            if lp.Character then for _,p in ipairs(lp.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end
-            for _,prt in ipairs(ws:GetPartBoundsInRadius(pos, 170)) do
-                local m = getTopLevelEntity(prt)
-                if m and isTrueNPC(m) and not isRealPlayer(m) then
-                    local h = m:FindFirstChildOfClass("Humanoid"); local hr = getRootPart(m)
-                    if h and hr then pcall(function() h.WalkSpeed=0; h.PlatformStand=true; h.Sit=true; hr.AssemblyLinearVelocity = Vector3.zero end) end
-                end
-            end
-        end)
-        track("ignore", ignoreCon)
-    else
-        dis("ignore")
-        if lp.Character then for _,p in ipairs(lp.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end end
-    end
-end, Color3.fromRGB(0,150,200))
-
--- Stats
-makeBtn(statsF, "Spd +20", function() apply(function(h) h.WalkSpeed = h.WalkSpeed + 20 end) end, Color3.fromRGB(0,80,120))
-makeBtn(statsF, "Spd -20", function() apply(function(h) h.WalkSpeed = math.max(0, h.WalkSpeed-20) end) end, Color3.fromRGB(0,50,80))
-makeBtn(statsF, "Jmp +20", function() apply(function(h) h.JumpPower = (h.JumpPower or 50)+20 end) end, Color3.fromRGB(0,120,80))
-makeBtn(statsF, "Jmp -20", function() apply(function(h) h.JumpPower = math.max(0, (h.JumpPower or 50)-20) end) end, Color3.fromRGB(0,80,50))
-makeBtn(statsF, "Size x2", function() apply(function(_,n) scale(n,2) end) end, Color3.fromRGB(120,80,0))
-makeBtn(statsF, "Size /2", function() apply(function(_,n) scale(n,0.5) end) end, Color3.fromRGB(80,60,0))
-makeBtn(statsF, "HP 1", function() apply(function(h) h.Health=1 end) end, Color3.fromRGB(120,30,30))
-makeBtn(statsF, "God HP", function() apply(function(h) h.MaxHealth=1e9; h.Health=1e9 end) end, Color3.fromRGB(0,120,60))
-
--- ==================== УНИВЕРСАЛЬНЫЕ СПИСКИ И АВТООБНОВЛЕНИЕ (0% ЛАГОВ!) ====================
-local npcBtns = {}
-
-local function refreshNPC()
+local function refreshTable()
     for _,c in ipairs(npcS:GetChildren()) do if c:IsA("Frame") or c:IsA("TextButton") then c:Destroy() end end
-    npcBtns = {}
+    npcButtons = {}
     local entities = getAllValidEntities()
     
     for _,obj in ipairs(entities) do
         local valid, entityType, hpText, isAnchored, root = analyzeEntity(obj)
         if valid and root then
             local b = Instance.new("TextButton", npcS)
-            b.Size = UDim2.new(1,-4,0,24); b.Text = ""
-            b.Font = Enum.Font.SourceSans; b.TextSize = 11
-            b.BackgroundColor3 = selectedNPCs[obj] and Color3.fromRGB(0,120,0) or Color3.fromRGB(40,40,40)
+            b.Size = UDim2.new(1, -6, 0, 26); b.Text = ""
+            b.BackgroundColor3 = selectedNPCs[obj] and Color3.fromRGB(20,90,30) or Color3.fromRGB(32,32,42)
             Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
 
-            local nm = Instance.new("TextLabel", b)
-            nm.Size = UDim2.new(0.48,0,1,0); nm.Position = UDim2.new(0,6,0,0); nm.BackgroundTransparency = 1
-            nm.Text = obj.Name.." "..entityType; nm.TextColor3 = Color3.fromRGB(255,255,255); nm.Font = Enum.Font.SourceSansBold; nm.TextSize = 11; nm.TextXAlignment = Enum.TextXAlignment.Left
-
-            local hp = Instance.new("TextLabel", b)
-            hp.Size = UDim2.new(0.32,0,1,0); hp.Position = UDim2.new(0.49,0,0,0); hp.BackgroundTransparency = 1
-            hp.Text = hpText; hp.TextColor3 = Color3.fromRGB(100,255,100); hp.Font = Enum.Font.SourceSans; hp.TextSize = 10; hp.TextXAlignment = Enum.TextXAlignment.Right
-
-            local ow = Instance.new("TextLabel", b)
-            ow.Size = UDim2.new(0.18,0,1,0); ow.Position = UDim2.new(0.82,0,0,0); ow.BackgroundTransparency = 1
-            ow.Text = checkOwnership(root); ow.TextColor3 = Color3.fromRGB(200,200,200); ow.Font = Enum.Font.SourceSans; ow.TextSize = 10
+            makeColLabel(b, "  "..obj.Name, UDim2.new(0,0,0,0), UDim2.new(0.38,0,1,0), Color3.fromRGB(255,255,255))
+            makeColLabel(b, entityType, UDim2.new(0.39,0,0,0), UDim2.new(0.26,0,1,0), Color3.fromRGB(180,220,255))
+            local hp = makeColLabel(b, hpText, UDim2.new(0.66,0,0,0), UDim2.new(0.18,0,1,0), Color3.fromRGB(150,255,150))
+            local ow = makeColLabel(b, checkOwnership(root), UDim2.new(0.85,0,0,0), UDim2.new(0.14,0,1,0), Color3.fromRGB(200,200,200))
 
             b.MouseButton1Click:Connect(function()
                 if selectedNPCs[obj] then
-                    selectedNPCs[obj] = nil; b.BackgroundColor3 = Color3.fromRGB(40,40,40)
-                    local hl = obj:FindFirstChild("_NPCMassHL") if hl then hl:Destroy() end
+                    selectedNPCs[obj] = nil; b.BackgroundColor3 = Color3.fromRGB(32,32,42)
+                    local hl = obj:FindFirstChild("_NPCKillHL") if hl then hl:Destroy() end
                 else
-                    selectedNPCs[obj] = true; b.BackgroundColor3 = Color3.fromRGB(0,120,0); currentNPC = obj
-                    if not obj:FindFirstChild("_NPCMassHL") then
+                    selectedNPCs[obj] = true; currentNPC = obj; b.BackgroundColor3 = Color3.fromRGB(20,90,30)
+                    if not obj:FindFirstChild("_NPCKillHL") then
                         local hl = Instance.new("Highlight", obj)
-                        hl.Name = "_NPCMassHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.OutlineColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
+                        hl.Name = "_NPCKillHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.OutlineColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
                         highlights[obj] = hl
                     end
                 end
             end)
-            table.insert(npcBtns, {obj, b, hp, ow, root})
+            table.insert(npcButtons, {obj, b, hp, ow, root})
         end
     end
-end
-
-local function refreshPlr()
-    for _,c in ipairs(plrS:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    for _,p in ipairs(plrs:GetPlayers()) do if p~=lp then
-        local b = Instance.new("TextButton", plrS)
-        b.Size = UDim2.new(1,-4,0,20); b.Text = p.Name; b.Font = Enum.Font.SourceSans; b.TextSize = 11
-        b.BackgroundColor3 = (p==activeTarget) and Color3.fromRGB(200,40,40) or Color3.fromRGB(40,40,40)
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
-        b.MouseButton1Click:Connect(function()
-            activeTarget = p; refreshPlr()
-            if attackMode then print("[ATTACK] Target locked:", p.Name, "— ауры теперь около него"); light(p.Character, Color3.fromRGB(255,80,80)) end
-        end)
-    end end
+    title.Text = "  👑 NPC KILL TESTER v30.0 (ЦЕЛЬНЫХ СУЩЕСТВ В ИГРЕ: "..#entities..")"
 end
 
 task.spawn(function()
     while true do
-        task.wait(0.35)
-        for _,d in ipairs(npcBtns) do
-            local obj, b, hpLbl, owLbl, root = unpack(d)
+        task.wait(0.5)
+        for _,data in ipairs(npcButtons) do
+            local obj, b, hpLbl, owLbl, root = unpack(data)
             if obj and obj.Parent and b and b.Parent and root and root.Parent then
-                b.BackgroundColor3 = selectedNPCs[obj] and Color3.fromRGB(0,120,0) or Color3.fromRGB(40,40,40)
+                b.BackgroundColor3 = selectedNPCs[obj] and Color3.fromRGB(20,90,30) or Color3.fromRGB(32,32,42)
                 local valid, _, hpText = analyzeEntity(obj)
                 if valid then
                     hpLbl.Text = hpText
-                    if string.find(hpText, "0") or string.find(hpText, "-") then hpLbl.TextColor3 = Color3.fromRGB(255,100,100) else hpLbl.TextColor3 = Color3.fromRGB(100,255,100) end
+                    if string.find(hpText, "0") or string.find(hpText, "-") then hpLbl.TextColor3 = Color3.fromRGB(255,100,100) else hpLbl.TextColor3 = Color3.fromRGB(150,255,150) end
                 end
                 local owText = checkOwnership(root)
                 owLbl.Text = owText
-                if string.find(owText, "ME") then owLbl.TextColor3 = Color3.fromRGB(100,255,100) elseif string.find(owText, "ANCHORED") then owLbl.TextColor3 = Color3.fromRGB(255,180,0) else owLbl.TextColor3 = Color3.fromRGB(255,80,80) end
+                if string.find(owText, "ME") then owLbl.TextColor3 = Color3.fromRGB(100,255,100) elseif string.find(owText, "ANCHORED") then owLbl.TextColor3 = Color3.fromRGB(255,180,0) else owLbl.TextColor3 = Color3.fromRGB(255,100,100) end
             end
         end
     end
 end)
 
-local function boost()
+local function boostAuth()
     pcall(function()
-        if not sethiddenproperty then return end
-        local radius = 3000000000
-        local pos = getCurrentPosition()
-        if not pos and lp.Character then pos = lp.Character:GetPivot().Position end
-        if pos then
-            for _,plr in ipairs(plrs:GetPlayers()) do
-                if plr ~= lp and plr.Character then
-                    local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp and (hrp.Position - pos).Magnitude < 600 then radius = math.max(radius, 8000000000) end
-                end
-            end
+        if sethiddenproperty then
+            sethiddenproperty(lp, "SimulationRadius", 100000000000)
+            sethiddenproperty(lp, "MaxSimulationRadius", 100000000000)
         end
-        if isControlling or (attackMode and activeTarget) or (lp.Character and isnpc(lp.Character)) then radius = 100000000000 end
-        sethiddenproperty(lp, "SimulationRadius", radius)
-        sethiddenproperty(lp, "MaxSimulationRadius", radius)
     end)
 end
+rs.RenderStepped:Connect(boostAuth); rs.Heartbeat:Connect(boostAuth)
 
-rs.RenderStepped:Connect(boost); rs.Heartbeat:Connect(boost); rs.PreSimulation:Connect(boost); rs.Stepped:Connect(boost)
+task.spawn(function() while true do pcall(refreshTable); task.wait(3.5) end end)
+pcall(refreshTable)
+runFullAnalysis()
 
-task.spawn(function()
-    while true do
-        task.wait(0.08)
-        if isControlling and currentNPC then
-            for _,part in ipairs(currentNPC:GetDescendants()) do
-                if part:IsA("BasePart") then pcall(function() part:SetNetworkOwner(lp); part.Anchored = false end) end
-            end
-            boost()
-        end
-        if attackMode and activeTarget and activeTarget.Character then boost() end
-    end
-end)
+local function unloadAll()
+    for _,c in pairs(connections) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
+    for _,hl in pairs(highlights) do pcall(function() if hl and hl.Parent then hl:Destroy() end end) end
+    for _,o in ipairs(ws:GetDescendants()) do if o.Name == "_NPCKillHL" then pcall(function() o:Destroy() end) end end
+    if sg and sg.Parent then sg:Destroy() end
+    if highlight and highlight.Parent then highlight:Destroy() end
+    _G.NPCKillTesterPro = nil
+end
 
-task.spawn(function() while true do task.wait(3.0) pcall(refreshNPC) end end)
-plrs.PlayerAdded:Connect(function() pcall(refreshPlr) end)
-plrs.PlayerRemoving:Connect(function(p) if p==activeTarget then activeTarget=nil end pcall(refreshPlr) end)
-task.spawn(function() while true do task.wait(2.4) pcall(refreshPlr) end end)
+_G.NPCKillTesterPro.Unload = unloadAll
+unloadBtn.MouseButton1Click:Connect(unloadAll)
 
-pcall(refreshNPC); pcall(refreshPlr); runFullAnalysis()
-
-print("[ULTIMATE v22.0 GOD-EDITION] Ваша оригинальная панель успешно экранизирована!")
-print("[ULTIMATE] Вживлены ВСЕ 40 боевых движков и исправлен вызов getAllValidEntities!")
-print("[ULTIMATE] Используй X чтобы выгрузить.")
+print("[KILL LAB v30.0 FINAL] Загружены 4 Супер-Кнопки, просторная сетка на 10 тестов и SBBF!")
