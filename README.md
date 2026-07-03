@@ -13,7 +13,6 @@ local CollectionService = game:GetService("CollectionService")
 local UIS = game:GetService("UserInputService")
 local VIM = game:GetService("VirtualInputManager")
 local PhysicsService = game:GetService("PhysicsService")
-local StarterGui = game:GetService("StarterGui")
 local lp = plrs.LocalPlayer
 local mouse = lp:GetMouse()
 local ts = game:GetService("TweenService")
@@ -25,58 +24,61 @@ local connections = {}
 local highlights = {}
 local rollbackGuards = {}
 
--- 🎛️ ОРИГИНАЛЬНЫЕ 6 КАСТОВ V32 + 1 ДОБАВЛЕННЫЙ (для методов ввода что никуда не влезли)
+-- 🎛️ ГЛАВНЫЕ КАСТЫ (тумблеры «весь каст ON/OFF»)
+local CastEnabled = {
+    GoldenGrail = true,
+    RemotesWeapons = true,
+    CustomRigs = true,
+    FEClassic = true,
+    MathStats = true,
+    DestroyerServer = false,
+    PlayerInputSim = true,
+}
+
+-- 🔬 ПОДНАСТРОЙКИ КАЖДОГО МЕТОДА (индивидуальные тумблеры)
+-- Формат: [methodId] = true/false
+local MethodEnabled = {}
+-- Будет заполнено ниже вместе с определением методов
+
 local CombatSettings = {
-    -- Оригинальные 6:
-    GoldenGrail = true,        -- 👑 Золотой Грааль (TakeDamage DPS)
-    RemotesWeapons = true,     -- 📡 Ремоуты, Оружие, Тач, TakeDamage
-    CustomRigs = true,         -- 🦾 Кастомные боссы, кости, констрейнты
-    FEClassic = true,          -- 🩸 Классика FE: суставы, HP=0, ragdoll
-    MathStats = true,          -- 📊 Краш математики (NaN, 1e308, negative)
-    DestroyerServer = false,   -- 🚀 ПОЛЁТ В КОСМОС (OFF по умолчанию)
-    -- Новый каст (для методов симуляции ввода что не влезли в 6 оригинальных):
-    PlayerInputSim = true,     -- 🎮 Симуляция реального ввода игрока (VIM + Tool)
-    -- Регулировки:
     DamageAmount = 50000,
     HyperSpeed = false
 }
 
-local DeepAnalysisData = { CombatRemotes = {}, MapHazards = {}, DeathSignals = {}, WeaponRemotes = {}, TaggedKillBricks = {}, AbilityRemotes = {} }
+local DeepAnalysisData = { CombatRemotes = {}, MapHazards = {}, WeaponRemotes = {}, AbilityRemotes = {} }
+local RemoteHistory = {} -- v38: для №149 Remote Chain Replay
 
 local function track(name, con) if con then connections[name] = con end end
 
-local highlight = Instance.new("Highlight")
-highlight.Parent = lp
-highlight.FillTransparency = 1
-highlight.OutlineTransparency = 1
+-- 📚 РЕЕСТР ВСЕХ МЕТОДОВ (для UI автогенерации)
+-- Формат: {id, cast, name, desc, fn}
+local MethodRegistry = {}
 
--- ==================== АНАЛИЗАТОР (как в оригинале) ====================
+local function registerMethod(id, cast, name, desc, fn, defaultEnabled)
+    MethodEnabled[id] = defaultEnabled ~= false
+    table.insert(MethodRegistry, {id=id, cast=cast, name=name, desc=desc, fn=fn})
+end
+
+-- ==================== АНАЛИЗАТОР (с историей ремоутов для №149) ====================
 local function indexObject(obj)
     if not obj then return end
     pcall(function()
         if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
             local nm = string.lower(obj.Name)
             local fnm = obj.Parent and string.lower(obj.Parent.Name) or ""
-            local isHoneypot = string.find(nm,"ban") or string.find(nm,"kick") or string.find(nm,"admin") or string.find(nm,"anticheat") or string.find(nm,"ac_") or string.find(nm,"log") or string.find(nm,"report") or string.find(nm,"detect") or string.find(nm,"security") or string.find(nm,"flag") or string.find(fnm,"ban") or string.find(fnm,"anticheat")
+            local isHoneypot = string.find(nm,"ban") or string.find(nm,"kick") or string.find(nm,"admin") or string.find(nm,"anticheat") or string.find(nm,"log") or string.find(nm,"report") or string.find(nm,"detect") or string.find(nm,"security") or string.find(fnm,"anticheat")
             if not isHoneypot then
                 if string.find(nm,"attack") or string.find(nm,"damage") or string.find(nm,"hit") or string.find(nm,"combat") or string.find(nm,"kill") or string.find(nm,"strike") or string.find(nm,"swing") or string.find(nm,"slash") or string.find(fnm,"remote") or string.find(fnm,"event") then
                     if not table.find(DeepAnalysisData.CombatRemotes, obj) then table.insert(DeepAnalysisData.CombatRemotes, obj) end
                 end
-                if string.find(nm,"ability") or string.find(nm,"skill") or string.find(nm,"cast") or string.find(nm,"spell") or string.find(nm,"power") then
+                if string.find(nm,"ability") or string.find(nm,"skill") or string.find(nm,"cast") or string.find(nm,"spell") then
                     if not table.find(DeepAnalysisData.AbilityRemotes, obj) then table.insert(DeepAnalysisData.AbilityRemotes, obj) end
                 end
             end
         end
-        if obj:IsA("BasePart") then
-            local nm = string.lower(obj.Name)
-            local hasTouch = obj:FindFirstChildOfClass("TouchTransmitter") ~= nil
-            if string.find(nm,"kill") or string.find(nm,"lava") or string.find(nm,"hazard") or string.find(nm,"spike") or string.find(nm,"death") or string.find(nm,"void") or (hasTouch and string.find(nm,"trap")) then
-                if not table.find(DeepAnalysisData.MapHazards, obj) then table.insert(DeepAnalysisData.MapHazards, obj) end
-            end
-        end
         if obj:IsA("Tool") or obj:IsA("HopperBin") then
             for _,rem in ipairs(obj:GetDescendants()) do
-                if (rem:IsA("RemoteEvent") or rem:IsA("RemoteFunction") or rem:IsA("BindableEvent")) and not table.find(DeepAnalysisData.WeaponRemotes, rem) then
+                if (rem:IsA("RemoteEvent") or rem:IsA("RemoteFunction")) and not table.find(DeepAnalysisData.WeaponRemotes, rem) then
                     table.insert(DeepAnalysisData.WeaponRemotes, rem)
                 end
             end
@@ -85,26 +87,19 @@ local function indexObject(obj)
 end
 
 local function runFullAnalysis()
-    DeepAnalysisData = { CombatRemotes = {}, MapHazards = {}, DeathSignals = {}, WeaponRemotes = {}, TaggedKillBricks = {}, AbilityRemotes = {} }
+    DeepAnalysisData = { CombatRemotes = {}, MapHazards = {}, WeaponRemotes = {}, AbilityRemotes = {} }
     for _,o in ipairs(rep:GetDescendants()) do indexObject(o) end
     for _,o in ipairs(ws:GetDescendants()) do indexObject(o) end
     for _,p in ipairs(plrs:GetPlayers()) do
         local bp = p:FindFirstChild("Backpack")
         if bp then for _,o in ipairs(bp:GetDescendants()) do indexObject(o) end end
     end
-    pcall(function()
-        for _,tag in ipairs({"KillBrick","Hazard","Lava","Spike","DamageZone","Deadly","KillZone"}) do
-            for _,tagged in ipairs(CollectionService:GetTagged(tag)) do
-                if tagged:IsA("BasePart") and not table.find(DeepAnalysisData.TaggedKillBricks, tagged) then table.insert(DeepAnalysisData.TaggedKillBricks, tagged) end
-            end
-        end
-    end)
-    print("[🤖 v37 ANALYZER] Combat:", #DeepAnalysisData.CombatRemotes, "| Weapon:", #DeepAnalysisData.WeaponRemotes)
+    print("[🤖 v38 ANALYZER] Combat:", #DeepAnalysisData.CombatRemotes, "| Weapon:", #DeepAnalysisData.WeaponRemotes)
 end
 
 ws.DescendantAdded:Connect(indexObject); rep.DescendantAdded:Connect(indexObject)
 
--- ==================== БАЗОВЫЕ УТИЛИТЫ (без изменений) ====================
+-- ==================== БАЗОВЫЕ УТИЛИТЫ ====================
 local function getRootPart(obj)
     if not obj then return nil end
     if obj:IsA("BasePart") then return obj end
@@ -124,62 +119,56 @@ local function isParametricCreature(model)
     if partsCount > 350 then return false end
     if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChildOfClass("AnimationController") or model:FindFirstChildOfClass("ControllerManager") then return true end
     if model:FindFirstChildOfClass("Bone", true) then return true end
-    if model:FindFirstChild("Health", true) or model:FindFirstChild("HP", true) or model:GetAttribute("Health") or model:GetAttribute("HP") or model:GetAttribute("Boss") then return true end
-    for _, desc in ipairs(model:GetDescendants()) do
-        if desc:IsA("Motor6D") or desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") then return true end
-    end
+    if model:FindFirstChild("Health", true) or model:GetAttribute("Health") or model:GetAttribute("HP") or model:GetAttribute("Boss") then return true end
+    for _, desc in ipairs(model:GetDescendants()) do if desc:IsA("Motor6D") or desc:IsA("BallSocketConstraint") then return true end end
     return false
 end
 
 local function getAllValidEntities()
-    local rawCandidates = {}
+    local raw = {}
     for _, obj in ipairs(ws:GetDescendants()) do
         if obj:IsA("Model") and obj ~= lp.Character and not plrs:GetPlayerFromCharacter(obj) then
-            if isParametricCreature(obj) then table.insert(rawCandidates, obj) end
+            if isParametricCreature(obj) then table.insert(raw, obj) end
         end
     end
-    local finalEntities = {}
-    for _, cand in ipairs(rawCandidates) do
-        local isContainer = false
-        for _, other in ipairs(rawCandidates) do if cand ~= other and other:IsDescendantOf(cand) then isContainer = true; break end end
-        if not isContainer then table.insert(finalEntities, cand) end
+    local final = {}
+    for _, c in ipairs(raw) do
+        local isChild = false
+        for _, o in ipairs(raw) do if c ~= o and o:IsDescendantOf(c) then isChild = true; break end end
+        if not isChild then table.insert(final, c) end
     end
-    return finalEntities
+    return final
 end
 
 local function analyzeEntity(obj)
     local root = getRootPart(obj); if not root then return false, nil, nil, false, nil end
     local hum = obj:FindFirstChildOfClass("Humanoid")
-    local anim = obj:FindFirstChildOfClass("AnimationController")
-    local valHP = obj:FindFirstChild("Health", true) or obj:FindFirstChild("HP", true) or obj:FindFirstChild("MaxHealth", true)
-    local attrHP = obj:GetAttribute("Health") or obj:GetAttribute("HP") or obj:GetAttribute("Enemy") or obj:GetAttribute("Boss")
+    local valHP = obj:FindFirstChild("Health", true) or obj:FindFirstChild("HP", true)
+    local attrHP = obj:GetAttribute("Health") or obj:GetAttribute("HP") or obj:GetAttribute("Boss")
     local nm = string.lower(obj.Name)
-    local isBoss = string.find(nm,"boss") or string.find(nm,"killer") or string.find(nm,"thanos")
-    local isRobot = string.find(nm,"robot") or string.find(nm,"bot") or string.find(nm,"droid") or string.find(nm,"mech")
-    local entityType, hpText = "Unknown", "N/A"
+    local isBoss = string.find(nm,"boss") or string.find(nm,"killer")
+    local et, hp = "Unknown", "N/A"
     if hum then
-        entityType = isBoss and "[👑 Boss Hum]" or (isRobot and "[🤖 Робот/Hum]" or "[🚶 Humanoid]")
-        hpText = math.floor(hum.Health).."/"..math.floor(hum.MaxHealth)
-    elseif anim then
-        entityType = isBoss and "[👑 Boss Anim]" or "[🤖 AnimCtrl]"
-        if valHP and (valHP:IsA("NumberValue") or valHP:IsA("IntValue")) then hpText = tostring(valHP.Value).." (Val)"
-        elseif attrHP then hpText = tostring(attrHP).." (Attr)" else hpText = "No HP" end
-    elseif valHP or attrHP then
-        entityType = isBoss and "[👑 Boss Stat]" or "[📊 Value/Attr]"
-        if valHP and (valHP:IsA("NumberValue") or valHP:IsA("IntValue")) then hpText = tostring(valHP.Value).." (Val)"
-        else hpText = tostring(attrHP).." (Attr)" end
+        et = isBoss and "[👑 Boss Hum]" or "[🚶 Humanoid]"
+        hp = math.floor(hum.Health).."/"..math.floor(hum.MaxHealth)
+    elseif valHP then
+        et = isBoss and "[👑 Custom Boss]" or "[🦾 Custom]"
+        hp = tostring(valHP.Value)
+    elseif attrHP then
+        et = isBoss and "[👑 Attr Boss]" or "[📊 Attr]"
+        hp = tostring(attrHP)
     else
-        entityType = isBoss and "[👑 Boss Rig]" or "[🦾 Custom Rig]"
-        hpText = "Rig"
+        et = isBoss and "[👑 Rig Boss]" or "[🦾 Rig]"
+        hp = "Rig"
     end
-    return true, entityType, hpText, root.Anchored, root
+    return true, et, hp, root.Anchored, root
 end
 
-local function checkOwnership(part)
-    if not part or not part:IsA("BasePart") then return "[NO PART]" end
-    if part.Anchored then return "[⚓ ANCHORED]" end
-    local ok, owner = pcall(function() return part:IsNetworkOwner() end)
-    if ok and owner then return "[✅ ME]" else return "[🌐 SERVER]" end
+local function checkOwner(part)
+    if not part or not part:IsA("BasePart") then return "[NO]" end
+    if part.Anchored then return "[⚓]" end
+    local ok, o = pcall(function() return part:IsNetworkOwner() end)
+    if ok and o then return "[✅ ME]" else return "[🌐 SRV]" end
 end
 
 local function getTargets()
@@ -191,124 +180,84 @@ end
 
 local function claimFE(obj)
     pcall(function()
-        if sethiddenproperty then
-            sethiddenproperty(lp, "SimulationRadius", 1e15)
-            sethiddenproperty(lp, "MaximumSimulationRadius", 1e15)
-        end
+        if sethiddenproperty then sethiddenproperty(lp, "SimulationRadius", 1e15) end
         for _,p in ipairs(obj:GetDescendants()) do
             if p:IsA("BasePart") and not p.Anchored then pcall(function() p:SetNetworkOwner(lp) end) end
         end
     end)
 end
 
--- ============================================================================
--- 🛡️ ANTI-KICK PRO — 5 СЛОЁВ ЗАЩИТЫ (МАКСИМАЛЬНАЯ ВЕРСИЯ)
--- ============================================================================
+-- ==================== 🛡️ ANTI-KICK PRO 5 СЛОЁВ ====================
 local AntiKickPro = { installed = false, active = false, hookedRemotes = {} }
 
 function AntiKickPro:Install()
     if self.installed then return end
-    self.installed = true
-    self.active = true
-    print("[🛡️ ANTI-KICK PRO] Устанавливаем 5 слоёв защиты...")
-
-    -- СЛОЙ 1: Переопределяем Player:Kick через hookmetamethod (если есть executor)
+    self.installed = true; self.active = true
+    print("[🛡️ ANTI-KICK PRO] Установка 5 слоёв...")
     pcall(function()
         if hookmetamethod then
             local old
             old = hookmetamethod(game, "__namecall", function(self, ...)
                 local method = getnamecallmethod and getnamecallmethod() or ""
-                if (method == "Kick" or method == "kick") and (self == lp or self:IsA("Player")) then
-                    if AntiKickPro.active then
-                        print("[🛡️ LAYER 1] Заблокирован Kick через __namecall!")
-                        return nil
-                    end
+                if (method == "Kick" or method == "kick") and (self == lp or (typeof(self)=="Instance" and self:IsA("Player"))) then
+                    if AntiKickPro.active then print("[🛡️ L1] Kick заблокирован!"); return nil end
                 end
                 return old(self, ...)
             end)
-            AntiKickPro.hookedRemotes.namecall = old
-            print("[🛡️ LAYER 1] hookmetamethod установлен")
+            print("[🛡️ L1] hookmetamethod OK")
         end
     end)
-
-    -- СЛОЙ 2: Переопределяем lp.Kick напрямую
     pcall(function()
         local mt = getrawmetatable and getrawmetatable(lp) or nil
         if mt and setreadonly then
             setreadonly(mt, false)
             local oldIndex = mt.__index
             mt.__index = newcclosure and newcclosure(function(self, key)
-                if key == "Kick" and self == lp and AntiKickPro.active then
-                    return function() print("[🛡️ LAYER 2] Kick перехвачен через __index!") end
-                end
+                if key == "Kick" and self == lp and AntiKickPro.active then return function() print("[🛡️ L2] Kick перехвачен!") end end
                 return oldIndex(self, key)
             end) or function(self, key)
-                if key == "Kick" and self == lp and AntiKickPro.active then
-                    return function() print("[🛡️ LAYER 2] Kick перехвачен!") end
-                end
+                if key == "Kick" and self == lp and AntiKickPro.active then return function() print("[🛡️ L2] Kick перехвачен!") end end
                 return oldIndex(self, key)
             end
-            setreadonly(mt, true)
-            print("[🛡️ LAYER 2] __index метатаблица переопределена")
+            setreadonly(mt, true); print("[🛡️ L2] __index OK")
         end
     end)
-
-    -- СЛОЙ 3: Блокируем OnClientEvent kick-remotes
     pcall(function()
         for _,r in ipairs(rep:GetDescendants()) do
-            if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
+            if r:IsA("RemoteEvent") then
                 local nm = string.lower(r.Name)
-                if string.find(nm,"kick") or string.find(nm,"ban") or string.find(nm,"anticheat") or string.find(nm,"punish") or string.find(nm,"detect") then
-                    pcall(function()
-                        if r:IsA("RemoteEvent") then
-                            local conn = r.OnClientEvent:Connect(function() print("[🛡️ LAYER 3] Заблокирован kick-remote:", r.Name) end)
-                            table.insert(AntiKickPro.hookedRemotes, conn)
-                        end
-                    end)
+                if string.find(nm,"kick") or string.find(nm,"ban") or string.find(nm,"anticheat") or string.find(nm,"punish") then
+                    local conn = r.OnClientEvent:Connect(function() print("[🛡️ L3] Заблокирован:", r.Name) end)
+                    table.insert(AntiKickPro.hookedRemotes, conn)
                 end
             end
         end
-        print("[🛡️ LAYER 3] Kick-remotes мониторятся")
+        print("[🛡️ L3] Kick-remotes мониторятся")
     end)
-
-    -- СЛОЙ 4: Патчим Humanoid.Died — предотвращаем срабатывание системы смерти
     pcall(function()
         local function patchChar(char)
             if not char then return end
             local hum = char:WaitForChild("Humanoid", 5)
-            if hum then
-                pcall(function()
-                    hum.BreakJointsOnDeath = false
-                    hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
-                    hum.MaxHealth = math.huge
-                    hum.Health = math.huge
-                    -- Постоянный monitor
-                    local conn = hum.HealthChanged:Connect(function(newHP)
-                        if AntiKickPro.active and newHP < hum.MaxHealth * 0.5 then
-                            pcall(function() hum.Health = hum.MaxHealth end)
-                        end
-                    end)
-                    table.insert(AntiKickPro.hookedRemotes, conn)
-                end)
-            end
+            if hum then pcall(function()
+                hum.BreakJointsOnDeath = false
+                hum.MaxHealth = math.huge; hum.Health = math.huge
+                local conn = hum.HealthChanged:Connect(function(newHP) if AntiKickPro.active and newHP < hum.MaxHealth*0.5 then pcall(function() hum.Health = hum.MaxHealth end) end end)
+                table.insert(AntiKickPro.hookedRemotes, conn)
+            end) end
         end
         patchChar(lp.Character)
-        track("charAddedAK", lp.CharacterAdded:Connect(patchChar))
-        print("[🛡️ LAYER 4] Humanoid patched (HP защита)")
+        track("charAK", lp.CharacterAdded:Connect(patchChar))
+        print("[🛡️ L4] Humanoid patched")
     end)
-
-    -- СЛОЙ 5: Auto-heal loop + ForceField renewal
     task.spawn(function()
         while AntiKickPro.active do
             pcall(function()
                 local char = lp.Character
                 if char then
                     local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health < hum.MaxHealth * 0.7 then hum.Health = hum.MaxHealth end
+                    if hum and hum.Health < hum.MaxHealth*0.7 then hum.Health = hum.MaxHealth end
                     if not char:FindFirstChildOfClass("ForceField") then
-                        local ff = Instance.new("ForceField")
-                        ff.Visible = false
-                        ff.Parent = char
+                        local ff = Instance.new("ForceField"); ff.Visible=false; ff.Parent=char
                         game:GetService("Debris"):AddItem(ff, 5)
                     end
                 end
@@ -316,980 +265,867 @@ function AntiKickPro:Install()
             task.wait(0.3)
         end
     end)
-    print("[🛡️ LAYER 5] Auto-heal loop запущен")
-    print("[🛡️ ANTI-KICK PRO] ✅ Все 5 слоёв установлены!")
+    print("[🛡️ L5] Auto-heal loop OK")
 end
 
 function AntiKickPro:Toggle(state)
     self.active = state
-    if state then
-        if not self.installed then self:Install() end
-        print("[🛡️ ANTI-KICK PRO] АКТИВЕН")
-    else
-        print("[🛡️ ANTI-KICK PRO] Приостановлен (hooks остаются)")
-    end
+    if state and not self.installed then self:Install() end
+    print("[🛡️ ANTI-KICK]", state and "АКТИВЕН" or "OFF")
 end
 
 -- ============================================================================
--- 🩸 КАСТ: FE CLASSIC (оригинальные + новые FE методы)
+-- 🩸 КАСТ: FE CLASSIC
 -- ============================================================================
 
-local function kill_1_SimpleHP(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
-    if hum then pcall(function() hum.Health = 0; hum:TakeDamage(999999) end) end
-end
+local function m_1(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h.Health=0; h:TakeDamage(999999) end) end end
+registerMethod(1, "FEClassic", "1. Simple HP=0", "Прямое обнуление Humanoid.Health", m_1)
 
-local function kill_2_RagdollStateDead(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
-    if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead); hum:ChangeState(Enum.HumanoidStateType.FallingDown); hum.PlatformStand = true; hum.Sit = true; hum.WalkSpeed = 0; hum.JumpPower = 0 end) end
-end
+local function m_2(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Dead); h.PlatformStand=true; h.WalkSpeed=0 end) end end
+registerMethod(2, "FEClassic", "2. Ragdoll State Dead", "ChangeState(Dead) + PlatformStand", m_2)
 
-local function kill_3_BreakJointsMotorsLoop(obj)
-    claimFE(obj); task.spawn(function()
-        for i=1,28 do
-            if not obj or not obj.Parent then break end
-            pcall(function() if obj.BreakJoints then obj:BreakJoints() end end)
-            for _,v in ipairs(obj:GetDescendants()) do
-                if v:IsA("Motor6D") or v:IsA("Weld") or v:IsA("ManualWeld") or v:IsA("Snap") or v:IsA("JointInstance") then pcall(function() v:Destroy() end) end
-            end
-            local hum = obj:FindFirstChildOfClass("Humanoid")
-            if hum and i % 3 == 0 then pcall(function() hum.Health = 0; hum:TakeDamage(999999) end) end
-            task.wait(0.022)
-        end
-    end)
-end
+local function m_3(obj) claimFE(obj); task.spawn(function() for i=1,20 do if not obj.Parent then break end; pcall(function() if obj.BreakJoints then obj:BreakJoints() end end); for _,v in ipairs(obj:GetDescendants()) do if v:IsA("Motor6D") or v:IsA("Weld") or v:IsA("JointInstance") then pcall(function() v:Destroy() end) end end; task.wait(0.025) end end) end
+registerMethod(3, "FEClassic", "3. Break Joints Loop", "BreakJoints x28 итераций", m_3)
 
-local function kill_5_DecapitateHeadTorso(obj)
-    claimFE(obj); for _,part in ipairs(obj:GetDescendants()) do
-        if part:IsA("BasePart") and (part.Name=="Head" or part.Name=="Torso" or part.Name=="UpperTorso") then
-            pcall(function()
-                for _,w in ipairs(part:GetChildren()) do if w:IsA("JointInstance") or w:IsA("Weld") or w:IsA("Motor6D") then w:Destroy() end end
-                part.AssemblyLinearVelocity = Vector3.new(math.random(-50000,50000), 100000, math.random(-50000,50000))
-            end)
-        end
-    end
-end
+local function m_5(obj) claimFE(obj); for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") and (p.Name=="Head" or p.Name=="Torso") then pcall(function() for _,w in ipairs(p:GetChildren()) do if w:IsA("Motor6D") or w:IsA("Weld") then w:Destroy() end end; p.AssemblyLinearVelocity = Vector3.new(0,100000,0) end) end end end
+registerMethod(5, "FEClassic", "5. Decapitate Head/Torso", "Отрыв головы + torso", m_5)
 
-local function kill_6_SafePulseExplosion(obj)
-    claimFE(obj); local root = getRootPart(obj); if not root then return end
-    pcall(function()
-        local exp = Instance.new("Explosion")
-        exp.Position = root.Position; exp.BlastRadius = 35; exp.BlastPressure = 0
-        exp.ExplosionType = Enum.ExplosionType.NoCraters
-        exp.Hit:Connect(function(part)
-            if part:IsDescendantOf(lp.Character) then return end
-            if part:IsDescendantOf(obj) then
-                pcall(function() part.AssemblyLinearVelocity = Vector3.new(0, 50000, 0); if part:IsA("Motor6D") then part:Destroy() end end)
-            end
-        end)
-        exp.Parent = ws
-    end)
-end
+local function m_6(obj) claimFE(obj); local r=getRootPart(obj); if not r then return end; pcall(function() local e=Instance.new("Explosion"); e.Position=r.Position; e.BlastRadius=35; e.BlastPressure=0; e.ExplosionType=Enum.ExplosionType.NoCraters; e.Parent=ws end) end
+registerMethod(6, "FEClassic", "6. Safe Pulse Explosion", "Explosion с DestroyJoint=0", m_6)
 
-local function kill_117_HumanoidStateFlood(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    pcall(function()
-        for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
-            if state ~= Enum.HumanoidStateType.Dead then pcall(function() hum:SetStateEnabled(state, false) end) end
-        end
-        for _, s in ipairs({Enum.HumanoidStateType.Dead, Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Physics, Enum.HumanoidStateType.Ragdoll}) do
-            pcall(function() hum:ChangeState(s) end)
-        end
-        hum.PlatformStand=true; hum.MaxHealth=0; hum.Health=0; hum:TakeDamage(math.huge)
-    end)
-end
+local function m_117(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); if not h then return end; pcall(function() for _,s in pairs(Enum.HumanoidStateType:GetEnumItems()) do if s~=Enum.HumanoidStateType.Dead then pcall(function() h:SetStateEnabled(s,false) end) end end; for _,s in ipairs({Enum.HumanoidStateType.Dead,Enum.HumanoidStateType.Physics,Enum.HumanoidStateType.Ragdoll}) do pcall(function() h:ChangeState(s) end) end; h.MaxHealth=0; h.Health=0 end) end
+registerMethod(117, "FEClassic", "117. Humanoid State Flood", "Все death states + disable rest", m_117)
 
-local function kill_121_RootHeadDecapitate(obj)
+local function m_121(obj) claimFE(obj); pcall(function() local h=obj:FindFirstChildOfClass("Humanoid"); if h then h.RequiresNeck=true end; local hd=obj:FindFirstChild("Head"); if hd then for _,j in ipairs(hd:GetChildren()) do if j:IsA("Motor6D") or j:IsA("Weld") then pcall(function() j.Part0=nil; j.Part1=nil end) end end end; if h then h:ChangeState(Enum.HumanoidStateType.Dead); h.Health=0 end end) end
+registerMethod(121, "FEClassic", "121. Root/Head Decapitate", "Разрыв Head-Neck (FE-way)", m_121)
+
+local function m_123(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); pcall(function() if h then h:ChangeState(Enum.HumanoidStateType.Ragdoll); h.PlatformStand=true end; for _,j in ipairs(obj:GetDescendants()) do if j:IsA("Motor6D") then pcall(function() j.Part0=nil; j.Part1=nil end) end end; if h then h.Health=0 end end) end
+registerMethod(123, "FEClassic", "123. Ragdoll Suffocation", "Ragdoll + Motor6D разрыв", m_123)
+
+local function m_90(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h.HipHeight=-50; h.PlatformStand=true; h:ChangeState(Enum.HumanoidStateType.Dead) end) end end
+registerMethod(90, "FEClassic", "90. HipHeight Crash", "HipHeight=-50 → died", m_90)
+
+local function m_137(obj) claimFE(obj); task.spawn(function() local motors={}; for _,v in ipairs(obj:GetDescendants()) do if v:IsA("Motor6D") then table.insert(motors,v) end end; for tick=1,40 do if not obj.Parent then break end; for i,m in ipairs(motors) do pcall(function() m.DesiredAngle=math.sin(tick*0.5+i)*1e6; m.MaxVelocity=math.huge end) end; task.wait(0.02) end end) end
+registerMethod(137, "FEClassic", "137. Joint Velocity Osc", "Motor6D DesiredAngle колебания", m_137)
+
+local function m_146(obj) pcall(function() for _,d in ipairs(obj:GetDescendants()) do if d:IsA("BindableEvent") then local nm=string.lower(d.Name); if string.find(nm,"died") or string.find(nm,"death") or string.find(nm,"kill") or string.find(nm,"defeat") then pcall(function() d:Fire(); d:Fire(obj); d:Fire(true) end) end end; if d:IsA("RemoteEvent") then local nm=string.lower(d.Name); if string.find(nm,"died") or string.find(nm,"death") then pcall(function() d:FireServer(); d:FireServer(obj) end) end end end end) end
+registerMethod(146, "FEClassic", "146. Custom Death Signal", "Файрим все Died/Death events", m_146)
+
+-- 🩸 150. HUMANOID DEATH SIMULATE — полный death cycle эмуляция
+local function m_150(obj)
     claimFE(obj)
-    pcall(function()
-        local hum = obj:FindFirstChildOfClass("Humanoid")
-        if hum then hum.RequiresNeck=true; hum.BreakJointsOnDeath=true end
-        local head = obj:FindFirstChild("Head")
-        if head then
-            for _,j in ipairs(head:GetChildren()) do
-                if j:IsA("Motor6D") or j:IsA("Weld") then pcall(function() j.Part0=nil; j.Part1=nil end) end
-            end
-        end
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Dead); hum.Health=0 end
-    end)
-end
-
-local function kill_123_RagdollSuffocation(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
-    pcall(function()
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Physics); hum:ChangeState(Enum.HumanoidStateType.Ragdoll); hum.PlatformStand=true end
-        for _,j in ipairs(obj:GetDescendants()) do if j:IsA("Motor6D") then pcall(function() j.Part0=nil; j.Part1=nil end) end end
-        if hum then hum.Health=0; hum:TakeDamage(math.huge) end
-    end)
-end
-
-local function kill_90_HipHeightCrash(obj)
-    claimFE(obj); local hum=obj:FindFirstChildOfClass("Humanoid")
-    if hum then pcall(function() hum.HipHeight=-50; hum.PlatformStand=true; hum:ChangeState(Enum.HumanoidStateType.Dead) end) end
-end
-
--- 🩸 137. JOINT VELOCITY OSCILLATE — колебания углов Motor6D через CurrentAngle
-local function kill_137_JointVelocityOscillate(obj)
-    claimFE(obj)
-    print("[🩸 v37 137] Joint Velocity Oscillate:", obj.Name)
+    local h = obj:FindFirstChildOfClass("Humanoid"); if not h then return end
+    print("[🩸 v38 150] Death Cycle Simulate:", obj.Name)
     task.spawn(function()
-        local motors = {}
-        for _,v in ipairs(obj:GetDescendants()) do
-            if v:IsA("Motor6D") then table.insert(motors, v) end
-        end
-        for tick = 1, 40 do
-            if not obj or not obj.Parent then break end
-            for i, m in ipairs(motors) do
-                pcall(function()
-                    m.DesiredAngle = math.sin(tick * 0.5 + i) * 1e6
-                    m.MaxVelocity = math.huge
-                end)
+        -- Точная последовательность как Roblox сам делает при смерти
+        pcall(function()
+            h.Health = 0
+            h:ChangeState(Enum.HumanoidStateType.Dead)
+            task.wait(0.05)
+            -- Триггерим Died signal напрямую через FireServer если возможно
+            if h.Died and h.Died.Fire then pcall(function() h.Died:Fire() end) end
+            -- Ломаем шею как это делает Roblox
+            local head = obj:FindFirstChild("Head")
+            if head then
+                local neck = head:FindFirstChild("Neck") or head:FindFirstChildOfClass("Motor6D")
+                if neck then pcall(function() neck:Destroy() end) end
             end
+            task.wait(0.05)
+            -- Активируем DeathSound
+            if head then
+                local sound = Instance.new("Sound")
+                sound.SoundId = "rbxasset://sounds/uuhhh.mp3"; sound.Parent = head; sound:Play()
+                game:GetService("Debris"):AddItem(sound, 2)
+            end
+            -- Финал
+            h:TakeDamage(math.huge)
+        end)
+    end)
+end
+registerMethod(150, "FEClassic", "150. Death Cycle Sim", "Полная эмуляция death cycle", m_150)
+
+-- 🩸 156. HUMANOID DESCRIPTION KILL — обнуляем через HumanoidDescription
+local function m_156(obj)
+    claimFE(obj)
+    local h = obj:FindFirstChildOfClass("Humanoid"); if not h then return end
+    print("[🩸 v38 156] HumanoidDescription Kill:", obj.Name)
+    pcall(function()
+        local desc = Instance.new("HumanoidDescription")
+        desc.HealthScale = 0
+        desc.HeightScale = 0.01
+        desc.WidthScale = 0.01
+        desc.DepthScale = 0.01
+        desc.BodyTypeScale = 0
+        h:ApplyDescription(desc)
+        task.wait(0.1)
+        h.Health = 0
+    end)
+end
+registerMethod(156, "FEClassic", "156. HumanoidDesc Kill", "ApplyDescription с 0 scale", m_156)
+
+-- ============================================================================
+-- 📡 КАСТ: REMOTES + WEAPONS + TOUCH
+-- ============================================================================
+
+local function m_17(obj) local c=lp.Character; if not c then return end; local t=c:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not t then return end; if t.Parent~=c then t.Parent=c end; local h=t:FindFirstChild("Handle"); local r=getRootPart(obj); task.spawn(function() for i=1,15 do if not obj.Parent then break end; pcall(function() t:Activate() end); if h and r and firetouchinterest then pcall(function() h.Size=Vector3.new(35,35,35); h.Massless=true; h.CanCollide=false; firetouchinterest(h,r,0); task.wait(); firetouchinterest(h,r,1) end) end; task.wait(0.03) end; if h then pcall(function() h.Size=Vector3.new(1,4,1) end) end end) end
+registerMethod(17, "RemotesWeapons", "17. Weapon Overdrive", "Tool:Activate + hitbox 35 куб", m_17)
+
+local function m_18(obj) if #DeepAnalysisData.CombatRemotes==0 then runFullAnalysis() end; task.spawn(function() for i=1,6 do if not obj.Parent then break end; for _,r in ipairs(DeepAnalysisData.CombatRemotes) do pcall(function() if r:IsA("RemoteEvent") then r:FireServer(obj); r:FireServer(obj,100); r:FireServer("Attack",obj) elseif r:IsA("RemoteFunction") then task.spawn(function() r:InvokeServer(obj) end) end end) end; task.wait(0.06) end end) end
+registerMethod(18, "RemotesWeapons", "18. Remote Brute Force", "Все combat remotes с разными аргументами", m_18)
+
+local function m_19(obj) if #DeepAnalysisData.WeaponRemotes==0 then runFullAnalysis() end; for _,r in ipairs(DeepAnalysisData.WeaponRemotes) do pcall(function() if r:IsA("RemoteEvent") then r:FireServer(obj); r:FireServer(getRootPart(obj),999999); r:FireServer(mouse.Hit.Position,obj) end end) end end
+registerMethod(19, "RemotesWeapons", "19. Weapon Remote Hijack", "Все Tool remotes", m_19)
+
+local function m_20(obj) for _,d in ipairs(obj:GetDescendants()) do if d:IsA("BindableEvent") then local nm=string.lower(d.Name); if string.find(nm,"die") or string.find(nm,"damage") then pcall(function() d:Fire() end) end end end end
+registerMethod(20, "RemotesWeapons", "20. Bindable Signal Trigger", "Fire все die/damage bindables", m_20)
+
+local function m_21(obj) local r=getRootPart(obj); local h=obj:FindFirstChildOfClass("Humanoid"); for _,it in ipairs({obj,r,h}) do if it then pcall(function() it:SetAttribute("Dead",true); it:SetAttribute("Health",0) end) end end end
+registerMethod(21, "RemotesWeapons", "21. Attribute Tag Execution", "SetAttribute Dead=true", m_21)
+
+local function m_25(obj) for _,v in ipairs(obj:GetDescendants()) do if v:IsA("BasePart") then local nm=string.lower(v.Name); if string.find(nm,"hitbox") or string.find(nm,"weapon") then pcall(function() v:Destroy() end) end end end end
+registerMethod(25, "RemotesWeapons", "25. Disarm Boss Hitbox", "Уничтожение hitbox/weapon частей", m_25)
+
+local function m_37(obj) if not firetouchinterest then return end; local c=lp.Character; if not c then return end; local t=c:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not t then return end; if t.Parent~=c then t.Parent=c end; local tp={}; for _,p in ipairs(t:GetDescendants()) do if p:IsA("BasePart") then table.insert(tp,p) end end; local np={}; for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then table.insert(np,p) end end; task.spawn(function() for i=1,5 do pcall(function() t:Activate() end); for _,x in ipairs(tp) do for _,y in ipairs(np) do pcall(function() firetouchinterest(x,y,0); firetouchinterest(x,y,1) end) end end; task.wait(0.04) end end) end
+registerMethod(37, "RemotesWeapons", "37. Matrix Weapon Touch", "Все Tool parts × NPC parts", m_37)
+
+local function m_43(obj) if not firetouchinterest then return end; local r=getRootPart(obj); if not r then return end; local at={}; for _,d in ipairs(ws:GetDescendants()) do if d:IsA("TouchTransmitter") and d.Parent and d.Parent~=r then table.insert(at,d.Parent) end end; task.spawn(function() for i=1,5 do for _,t in ipairs(at) do pcall(function() firetouchinterest(r,t,0); firetouchinterest(r,t,1) end) end; task.wait(0.05) end end) end
+registerMethod(43, "RemotesWeapons", "43. Touch Matrix Flood", "Все TouchTransmitters в мире", m_43)
+
+local function m_88(obj) if not firetouchinterest then return end; local c=lp.Character; local r=getRootPart(obj); if not c or not r then return end; for _,p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then pcall(function() firetouchinterest(p,r,0); firetouchinterest(p,r,1) end) end end end
+registerMethod(88, "RemotesWeapons", "88. Multi-Node Touch", "Все части игрока → NPC root", m_88)
+
+local function m_106(obj) local ids={}; pcall(function() for a,v in pairs(obj:GetAttributes()) do if string.find(string.lower(a),"id") then table.insert(ids,v) end end end); table.insert(ids,obj); table.insert(ids,obj.Name); local r=getRootPart(obj); if r then table.insert(ids,r) end; task.spawn(function() for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do for _,id in ipairs(ids) do pcall(function() if rem:IsA("RemoteEvent") then rem:FireServer(id); rem:FireServer(id,999999); rem:FireServer({Target=id,Damage=999999}) end end) end; task.wait(0.02) end end) end
+registerMethod(106, "RemotesWeapons", "106. Boss-ID Router", "Все возможные ID → все remotes", m_106)
+
+local function m_105(obj) local h=obj:FindFirstChildOfClass("Humanoid"); if not h then return end; task.spawn(function() for i=1,60 do if not obj.Parent then break end; rs.Heartbeat:Wait(); pcall(function() h:TakeDamage(100); for _,r in ipairs(DeepAnalysisData.CombatRemotes) do if r:IsA("RemoteEvent") then pcall(function() r:FireServer(obj) end) end end end) end end) end
+registerMethod(105, "RemotesWeapons", "105. Server-Frame Sync", "TakeDamage 100 × 60 в такт heartbeat", m_105)
+
+local function m_134(obj) if not firetouchinterest then return end; local c=lp.Character; if not c then return end; local mp={}; for _,p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then table.insert(mp,p) end end; local np={}; for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then table.insert(np,p) end end; task.spawn(function() for wave=1,5 do if not obj.Parent then break end; for i=1,200 do pcall(function() local a=mp[math.random(1,#mp)]; local b=np[math.random(1,#np)]; if a and b then firetouchinterest(a,b,0); firetouchinterest(a,b,1) end end) end; task.wait(0.05) end end) end
+registerMethod(134, "RemotesWeapons", "134. Touched Bomb 1000x", "Случайные пары × 1000 Touched", m_134)
+
+local function m_139(obj)
+    if #DeepAnalysisData.CombatRemotes==0 then runFullAnalysis() end
+    local r = getRootPart(obj)
+    local formats = { {obj},{obj,999999},{obj.Name},{"Attack",obj},{"Damage",obj,999999},{r},{r,999999},{{Target=obj,Damage=999999}},{obj:FindFirstChildOfClass("Humanoid"),999999},{lp,obj,999999},{lp.UserId,obj},{math.huge},{0/0},{"kill",obj.Name},{obj,1e308},{obj,-999999},{obj,999999,999999,999999},{"instakill",obj},{"execute",obj},{obj,{damage=999999,type="pierce"}} }
+    task.spawn(function()
+        for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do
+            for _,fmt in ipairs(formats) do pcall(function() if rem:IsA("RemoteEvent") then rem:FireServer(unpack(fmt)) elseif rem:IsA("RemoteFunction") then task.spawn(function() rem:InvokeServer(unpack(fmt)) end) end end) end
             task.wait(0.02)
         end
     end)
 end
+registerMethod(139, "RemotesWeapons", "139. Remote Fuzz 20fmt", "20 форматов аргументов на remotes", m_139)
 
--- 🩸 146. CUSTOM DEATH SIGNAL FIRE — ищем и файрим ВСЕ Died/OnDeath/DeathEvent
-local function kill_146_CustomDeathSignalFire(obj)
-    print("[🩸 v37 146] Custom Death Signal Fire:", obj.Name)
-    pcall(function()
-        for _,desc in ipairs(obj:GetDescendants()) do
-            if desc:IsA("BindableEvent") or desc:IsA("BindableFunction") then
-                local nm = string.lower(desc.Name)
-                if string.find(nm,"died") or string.find(nm,"death") or string.find(nm,"dead") or string.find(nm,"defeat") or string.find(nm,"kill") or string.find(nm,"perish") or string.find(nm,"expire") or string.find(nm,"eliminat") then
-                    pcall(function()
-                        if desc:IsA("BindableEvent") then
-                            desc:Fire(); desc:Fire(obj); desc:Fire(lp); desc:Fire(true); desc:Fire(999999)
-                        else desc:Invoke() end
-                    end)
-                end
-            end
-            if desc:IsA("RemoteEvent") then
-                local nm = string.lower(desc.Name)
-                if string.find(nm,"died") or string.find(nm,"death") or string.find(nm,"defeat") then
-                    pcall(function() desc:FireServer(); desc:FireServer(obj); desc:FireServer(true) end)
-                end
+local function m_145(obj) local c=lp.Character; if not c then return end; local t=c:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not t then return end; if t.Parent~=c then t.Parent=c end; local h=t:FindFirstChild("Handle"); if not h then return end; local r=getRootPart(obj); if not r then return end; task.spawn(function() local oS=h.Size; for i=1,10 do if not obj.Parent then break end; pcall(function() local mR=c:FindFirstChild("HumanoidRootPart"); if mR then local d=(r.Position-mR.Position).Magnitude+20; h.Size=Vector3.new(5,5,d); h.Massless=true; h.CanCollide=false; h.CFrame=CFrame.new(mR.Position,r.Position)*CFrame.new(0,0,-d/2) end; t:Activate(); if firetouchinterest then firetouchinterest(h,r,0); firetouchinterest(h,r,1) end end); task.wait(0.05) end; pcall(function() h.Size=oS end) end) end
+registerMethod(145, "RemotesWeapons", "145. Handle Hitbox Morph", "Handle растянуть до NPC", m_145)
+
+-- 📡 149. REMOTE CHAIN REPLAY — записываем и повторяем remote-вызовы 30x
+local function m_149(obj)
+    print("[📡 v38 149] Remote Chain Replay:", obj.Name)
+    task.spawn(function()
+        -- Записываем 2 сек все исходящие через remotes
+        local recorded = {}
+        local hooks = {}
+        for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do
+            if rem:IsA("RemoteEvent") then
+                local orig = rem.FireServer
+                local h = rawset and rawset(rem, "FireServer", function(self, ...)
+                    table.insert(recorded, {rem=self, args={...}})
+                    return orig(self, ...)
+                end)
+                table.insert(hooks, {rem=rem, orig=orig})
             end
         end
-        local hum = obj:FindFirstChildOfClass("Humanoid")
-        if hum then pcall(function()
-            for _,ev in ipairs({"Died","HealthChanged","StateChanged"}) do
-                if hum[ev] and hum[ev].Fire then pcall(function() hum[ev]:Fire() end) end
+        -- Даём игроку 2 сек чтобы ударить
+        task.wait(2)
+        -- Восстанавливаем оригинальный FireServer
+        for _,h in ipairs(hooks) do pcall(function() rawset(h.rem, "FireServer", nil) end) end
+        -- Повторяем всё что записали 30 раз
+        print("[📡 149] Записано вызовов:", #recorded, "— повтор 30x")
+        for i=1,30 do
+            if not obj.Parent then break end
+            for _,rec in ipairs(recorded) do
+                pcall(function() rec.rem:FireServer(unpack(rec.args)) end)
             end
-        end) end
-    end)
-end
-
--- ============================================================================
--- 📡 КАСТ: REMOTES + WEAPONS + TOUCH (оригинальные + новые сюда)
--- ============================================================================
-
-local function kill_17_OfficialWeaponOverdrive(obj)
-    local char = lp.Character; if not char then return end
-    local tool = char:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not tool then return end
-    if tool.Parent ~= char then tool.Parent = char end
-    local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("BasePart")
-    local root = getRootPart(obj)
-    task.spawn(function()
-        for i=1,15 do
-            if not obj or not obj.Parent then break end
-            pcall(function() tool:Activate() end)
-            if handle and root and firetouchinterest then pcall(function() handle.Size = Vector3.new(35,35,35); handle.Massless = true; handle.CanCollide = false; firetouchinterest(handle, root, 0); task.wait(); firetouchinterest(handle, root, 1) end) end
             task.wait(0.03)
         end
-        if handle then pcall(function() handle.Size = Vector3.new(1,4,1) end) end
     end)
 end
+registerMethod(149, "RemotesWeapons", "149. Remote Chain Replay", "Запись 2сек → повтор 30x (ударь сам!)", m_149)
 
-local function kill_18_SafeRemoteBruteForce(obj)
-    if #DeepAnalysisData.CombatRemotes == 0 then runFullAnalysis() end
-    task.spawn(function()
-        for i=1,6 do
-            if not obj or not obj.Parent then break end
-            for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do
-                pcall(function()
-                    if rem:IsA("RemoteEvent") then rem:FireServer(obj); rem:FireServer(obj, 100); rem:FireServer("Attack", obj); rem:FireServer(getRootPart(obj))
-                    elseif rem:IsA("RemoteFunction") then task.spawn(function() rem:InvokeServer(obj) end) end
-                end)
-            end
-            task.wait(0.06)
-        end
-    end)
-end
-
-local function kill_19_WeaponRemoteHijack(obj)
-    if #DeepAnalysisData.WeaponRemotes == 0 then runFullAnalysis() end
-    for _,rem in ipairs(DeepAnalysisData.WeaponRemotes) do
-        pcall(function()
-            if rem:IsA("RemoteEvent") then rem:FireServer(obj); rem:FireServer(getRootPart(obj), 999999); rem:FireServer(mouse.Hit.Position, obj)
-            elseif rem:IsA("RemoteFunction") then task.spawn(function() rem:InvokeServer(obj, 999999) end) end
-        end)
-    end
-end
-
-local function kill_20_BindableSignalTrigger(obj)
-    for _,desc in ipairs(obj:GetDescendants()) do
-        if desc:IsA("BindableEvent") then
-            local nm = string.lower(desc.Name)
-            if string.find(nm,"die") or string.find(nm,"dead") or string.find(nm,"damage") then pcall(function() desc:Fire() end) end
-        end
-    end
-end
-
-local function kill_21_AttributeTagExecution(obj)
-    local root = getRootPart(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
-    for _,item in ipairs({obj,root,hum}) do if item then pcall(function() item:SetAttribute("Dead", true); item:SetAttribute("Health", 0) end) end end
-end
-
-local function kill_25_DisarmBossHitboxes(obj)
-    for _,v in ipairs(obj:GetDescendants()) do if v:IsA("BasePart") then local nm = string.lower(v.Name); if string.find(nm,"hitbox") or string.find(nm,"weapon") then pcall(function() v:Destroy() end) end end end
-end
-
-local function kill_37_MatrixWeaponTouch(obj)
-    if not firetouchinterest then return end
+-- 📡 155. TOOL CLONE FLOOD — клонируем Tool 20 раз и активируем все
+local function m_155(obj)
     local char = lp.Character; if not char then return end
-    local tool = char:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not tool then return end
-    if tool.Parent ~= char then tool.Parent = char end
-    local tp = {}; for _,p in ipairs(tool:GetDescendants()) do if p:IsA("BasePart") then table.insert(tp, p) end end
-    local np = {}; for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then table.insert(np, p) end end
-    task.spawn(function() for i=1,5 do pcall(function() tool:Activate() end); for _,t in ipairs(tp) do for _,n in ipairs(np) do pcall(function() firetouchinterest(t,n,0); firetouchinterest(t,n,1) end) end end; task.wait(0.04) end end)
-end
-
-local function kill_43_TouchInterestMatrixFlood(obj)
-    if not firetouchinterest then return end
-    local root = getRootPart(obj); if not root then return end
-    local at = {}; for _,d in ipairs(ws:GetDescendants()) do if d:IsA("TouchTransmitter") and d.Parent and d.Parent~=root then table.insert(at, d.Parent) end end
-    task.spawn(function() for i=1,5 do for _,tp in ipairs(at) do pcall(function() firetouchinterest(root,tp,0); firetouchinterest(root,tp,1) end) end; task.wait(0.05) end end)
-end
-
-local function kill_88_MultiNodeTouch(obj)
-    if not firetouchinterest then return end
-    local char = lp.Character; local root = getRootPart(obj); if not char or not root then return end
-    for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then pcall(function() firetouchinterest(p, root, 0); firetouchinterest(p, root, 1) end) end end
-end
-
-local function kill_106_BossIDDamageRouter(obj)
-    local bossIDs = {}
-    pcall(function()
-        for attr, val in pairs(obj:GetAttributes()) do
-            if string.find(string.lower(attr),"id") then table.insert(bossIDs, val) end
-        end
-    end)
-    table.insert(bossIDs, obj); table.insert(bossIDs, obj.Name); local root=getRootPart(obj); if root then table.insert(bossIDs, root) end
+    local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+    local origTool = char:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not origTool then return end
+    print("[📡 v38 155] Tool Clone Flood x20:", obj.Name)
     task.spawn(function()
-        for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do
-            for _,id in ipairs(bossIDs) do
-                pcall(function()
-                    if rem:IsA("RemoteEvent") then rem:FireServer(id); rem:FireServer(id, 999999); rem:FireServer({Target=id, Damage=999999}) end
-                end)
-            end
-            task.wait(0.02)
-        end
-    end)
-end
-
-local function kill_105_ServerFrameSyncDamage(obj)
-    local hum = obj:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    task.spawn(function()
-        for i=1,60 do
-            if not obj or not obj.Parent then break end
-            rs.Heartbeat:Wait()
+        local clones = {}
+        for i=1,20 do
             pcall(function()
-                hum:TakeDamage(100)
-                for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do if rem:IsA("RemoteEvent") then pcall(function() rem:FireServer(obj) end) end end
+                local c = origTool:Clone()
+                c.Parent = lp.Backpack
+                table.insert(clones, c)
             end)
         end
-    end)
-end
-
-local function kill_134_TouchedEventBomb(obj)
-    if not firetouchinterest then return end
-    local char = lp.Character; if not char then return end
-    local myParts = {}; for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then table.insert(myParts, p) end end
-    local npcParts = {}; for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then table.insert(npcParts, p) end end
-    task.spawn(function()
-        for wave = 1, 5 do
-            if not obj or not obj.Parent then break end
-            for i=1,200 do
-                pcall(function() local mp=myParts[math.random(1,#myParts)]; local np=npcParts[math.random(1,#npcParts)]; if mp and np then firetouchinterest(mp,np,0); firetouchinterest(mp,np,1) end end)
-            end
-            task.wait(0.05)
-        end
-    end)
-end
-
--- 📡 139. REMOTE PARAMETER FUZZING — 20 форматов аргументов на combat remotes
-local function kill_139_RemoteParameterFuzzing(obj)
-    if #DeepAnalysisData.CombatRemotes == 0 then runFullAnalysis() end
-    print("[📡 v37 139] Remote Parameter Fuzzing:", obj.Name)
-    local root = getRootPart(obj)
-    local formats = {
-        {obj}, {obj, 999999}, {obj.Name}, {obj.Name, 999999},
-        {"Attack", obj}, {"Damage", obj, 999999}, {"Hit", obj, 999999},
-        {root}, {root, 999999}, {root and root.Position or Vector3.zero},
-        {{Target=obj, Damage=999999}}, {{Type="Attack", Target=obj}},
-        {obj:FindFirstChildOfClass("Humanoid")}, {obj:FindFirstChildOfClass("Humanoid"), 999999},
-        {lp, obj, 999999}, {lp.UserId, obj}, {lp.Character, obj, 999999},
-        {math.huge}, {0/0}, {"kill", obj.Name}
-    }
-    task.spawn(function()
-        for _,rem in ipairs(DeepAnalysisData.CombatRemotes) do
-            for _,fmt in ipairs(formats) do
+        task.wait(0.1)
+        local r = getRootPart(obj)
+        for wave=1,5 do
+            if not obj.Parent then break end
+            for _,c in ipairs(clones) do
                 pcall(function()
-                    if rem:IsA("RemoteEvent") then rem:FireServer(unpack(fmt))
-                    elseif rem:IsA("RemoteFunction") then task.spawn(function() rem:InvokeServer(unpack(fmt)) end) end
+                    hum:EquipTool(c)
+                    c:Activate()
+                    local h = c:FindFirstChild("Handle")
+                    if h and r and firetouchinterest then firetouchinterest(h, r, 0); firetouchinterest(h, r, 1) end
                 end)
             end
-            task.wait(0.02)
+            task.wait(0.1)
         end
+        -- Cleanup
+        for _,c in ipairs(clones) do pcall(function() c:Destroy() end) end
     end)
 end
-
--- 📡 145. TOOL HANDLE HITBOX MORPH — растягиваем Handle оружия прямо до NPC
-local function kill_145_ToolHandleHitboxMorph(obj)
-    local char = lp.Character; if not char then return end
-    local tool = char:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool"); if not tool then return end
-    if tool.Parent ~= char then tool.Parent = char end
-    local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("BasePart"); if not handle then return end
-    local root = getRootPart(obj); if not root then return end
-    print("[📡 v37 145] Tool Handle Hitbox Morph:", obj.Name)
-    task.spawn(function()
-        local origSize = handle.Size
-        local origCF = handle.CFrame
-        for i=1,10 do
-            if not obj or not obj.Parent then break end
-            pcall(function()
-                local myRoot = char:FindFirstChild("HumanoidRootPart")
-                if myRoot then
-                    local dist = (root.Position - myRoot.Position).Magnitude + 20
-                    handle.Size = Vector3.new(5, 5, dist)
-                    handle.Massless = true
-                    handle.CanCollide = false
-                    handle.CFrame = CFrame.new(myRoot.Position, root.Position) * CFrame.new(0, 0, -dist/2)
-                end
-                tool:Activate()
-                if firetouchinterest then firetouchinterest(handle, root, 0); firetouchinterest(handle, root, 1) end
-            end)
-            task.wait(0.05)
-        end
-        pcall(function() handle.Size = origSize end)
-    end)
-end
+registerMethod(155, "RemotesWeapons", "155. Tool Clone Flood x20", "20 копий Tool → все Activate", m_155)
 
 -- ============================================================================
--- 🦾 КАСТ: CUSTOM RIGS (кости, констрейнты, аниматоры)
+-- 🦾 КАСТ: CUSTOM RIGS
 -- ============================================================================
 
-local function kill_7_CustomConstraintShatter(obj)
-    claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do
-        if v:IsA("WeldConstraint") or v:IsA("RigidConstraint") or v:IsA("AlignPosition") or v:IsA("BallSocketConstraint") or v:IsA("HingeConstraint") or v:IsA("RodConstraint") or v:IsA("SpringConstraint") then pcall(function() v:Destroy() end) end
-    end
-end
+local function m_7(obj) claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do if v:IsA("WeldConstraint") or v:IsA("BallSocketConstraint") or v:IsA("HingeConstraint") or v:IsA("AlignPosition") or v:IsA("SpringConstraint") then pcall(function() v:Destroy() end) end end end
+registerMethod(7, "CustomRigs", "7. Constraint Shatter", "Уничтожение всех Constraint", m_7)
 
-local function kill_8_SkinnedMeshBoneShatter(obj)
-    claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do
-        if v:IsA("Bone") then pcall(function() v.Transform = CFrame.new(math.random(-50,50), math.random(-50,50), math.random(-50,50)) end)
-        elseif v:IsA("Attachment") and v.Name ~= "RootAttachment" then pcall(function() v:Destroy() end) end
-    end
-end
+local function m_8(obj) claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do if v:IsA("Bone") then pcall(function() v.Transform=CFrame.new(math.random(-50,50),math.random(-50,50),math.random(-50,50)) end) end end end
+registerMethod(8, "CustomRigs", "8. Skinned Mesh Bone Shatter", "Bones.Transform случайный CFrame", m_8)
 
-local function kill_9_KineticBodyTear(obj)
-    claimFE(obj); for i,p in ipairs(obj:GetDescendants()) do
-        if p:IsA("BasePart") then pcall(function() p.AssemblyLinearVelocity = Vector3.new(math.sin(i*99)*100000, math.cos(i*77)*100000, math.sin(i*33)*100000) end) end
-    end
-end
+local function m_9(obj) claimFE(obj); for i,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then pcall(function() p.AssemblyLinearVelocity=Vector3.new(math.sin(i*99)*100000,math.cos(i*77)*100000,math.sin(i*33)*100000) end) end end end
+registerMethod(9, "CustomRigs", "9. Kinetic Body Tear", "Все parts × разные velocity", m_9)
 
-local function kill_94_AnimationLock(obj)
-    local target = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("AnimationController"); if not target then return end
-    pcall(function() for _,t in ipairs(target:GetPlayingAnimationTracks()) do t:Stop(0) end end)
-end
+local function m_94(obj) local t=obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("AnimationController"); if not t then return end; pcall(function() for _,tr in ipairs(t:GetPlayingAnimationTracks()) do tr:Stop(0) end end) end
+registerMethod(94, "CustomRigs", "94. Animation Lock", "Stop все animation tracks", m_94)
 
-local function kill_95_RootPriorityZero(obj)
-    claimFE(obj); local root = getRootPart(obj); if not root then return end
-    pcall(function() for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then p.RootPriority=-127; p.Massless=true end end end)
-end
+local function m_95(obj) claimFE(obj); local r=getRootPart(obj); if not r then return end; pcall(function() for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then p.RootPriority=-127; p.Massless=true end end end) end
+registerMethod(95, "CustomRigs", "95. RootPriority Zero", "RootPriority=-127 + Massless", m_95)
 
-local function kill_124_VelocityShredder(obj)
-    claimFE(obj); task.spawn(function()
-        for wave=1,3 do
-            if not obj or not obj.Parent then break end
-            for i,p in ipairs(obj:GetDescendants()) do
-                if p:IsA("BasePart") then pcall(function() p.CanCollide=true; p.Massless=true; local dir=Vector3.new(math.sin(i*0.7)*5000, math.abs(math.cos(i*0.3))*8000, math.cos(i*1.1)*5000); p.AssemblyLinearVelocity=dir; p.AssemblyAngularVelocity=dir*0.5 end) end
-            end
-            task.wait(0.05)
-        end
-    end)
-end
+local function m_124(obj) claimFE(obj); task.spawn(function() for wave=1,3 do if not obj.Parent then break end; for i,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then pcall(function() p.CanCollide=true; p.Massless=true; local d=Vector3.new(math.sin(i*0.7)*5000,math.abs(math.cos(i*0.3))*8000,math.cos(i*1.1)*5000); p.AssemblyLinearVelocity=d; p.AssemblyAngularVelocity=d*0.5 end) end end; task.wait(0.05) end end) end
+registerMethod(124, "CustomRigs", "124. Velocity Shredder", "Разрыв через velocity waves", m_124)
 
-local function kill_127_CFrameLoopCrusher(obj)
-    claimFE(obj); task.spawn(function()
-        local motors = {}; for _,v in ipairs(obj:GetDescendants()) do if v:IsA("Motor6D") or v:IsA("Weld") then table.insert(motors, v) end end
-        for tick=1,50 do
-            if not obj or not obj.Parent then break end
-            for i,m in ipairs(motors) do pcall(function() local t=tick*0.1+i*0.37; m.C0 = m.C0 * CFrame.new(math.sin(t)*500, math.cos(t*1.3)*500, math.sin(t*0.7)*500) end) end
-            task.wait(0.01)
-        end
-    end)
-end
+local function m_127(obj) claimFE(obj); task.spawn(function() local motors={}; for _,v in ipairs(obj:GetDescendants()) do if v:IsA("Motor6D") or v:IsA("Weld") then table.insert(motors,v) end end; for tick=1,50 do if not obj.Parent then break end; for i,m in ipairs(motors) do pcall(function() local t=tick*0.1+i*0.37; m.C0=m.C0*CFrame.new(math.sin(t)*500,math.cos(t*1.3)*500,math.sin(t*0.7)*500) end) end; task.wait(0.01) end end) end
+registerMethod(127, "CustomRigs", "127. CFrame Loop Crusher", "50 микро-CFrame атак на Motor6D", m_127)
 
-local function kill_128_AnimationTrackOverload(obj)
+local function m_128(obj) claimFE(obj); local t=obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("AnimationController"); if not t then return end; task.spawn(function() local a=t:FindFirstChildOfClass("Animator"); if not a then a=Instance.new("Animator"); a.Parent=t end; for i=1,500 do if not obj.Parent then break end; pcall(function() local an=Instance.new("Animation"); an.AnimationId="rbxassetid://0"; local tr=a:LoadAnimation(an); tr:Play(); tr:AdjustSpeed(1000) end) end; local h=obj:FindFirstChildOfClass("Humanoid"); if h then task.wait(0.1); pcall(function() h:TakeDamage(math.huge); h.Health=0 end) end end) end
+registerMethod(128, "CustomRigs", "128. Anim Track Overload", "500 anim треков (крашит рендер)", m_128)
+
+local function m_130(obj) claimFE(obj); task.spawn(function() local atts={}; for _,a in ipairs(obj:GetDescendants()) do if a:IsA("Attachment") then table.insert(atts,a) end end; for tick=1,40 do if not obj.Parent then break end; for i,att in ipairs(atts) do pcall(function() local t=tick*0.15+i*0.5; att.CFrame=CFrame.new(math.sin(t)*100,math.cos(t)*100,math.sin(t*2)*100) end) end; task.wait(0.02) end end) end
+registerMethod(130, "CustomRigs", "130. Attachment Orbit Chaos", "Attachments орбитальный хаос", m_130)
+
+local function m_133(obj) claimFE(obj); task.spawn(function() for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") then pcall(function() local bv=Instance.new("BodyVelocity"); bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Velocity=Vector3.new((math.random()-0.5)*500,math.random()*800,(math.random()-0.5)*500); bv.Parent=p; game:GetService("Debris"):AddItem(bv,1) end) end end; task.wait(0.5); local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h:TakeDamage(math.huge); h.Health=0 end) end end) end
+registerMethod(133, "CustomRigs", "133. BodyForce Infinite Push", "BodyVelocity MaxForce=math.huge", m_133)
+
+-- ⭐ 140. SkinnedMeshAnnihilate — САМЫЙ МОЩНЫЙ (ты сказал что убил босса в другой игре!)
+local function m_140(obj)
     claimFE(obj)
-    local target = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("AnimationController"); if not target then return end
-    task.spawn(function()
-        local anim = target:FindFirstChildOfClass("Animator"); if not anim then anim = Instance.new("Animator"); anim.Parent = target end
-        for i=1,500 do
-            if not obj or not obj.Parent then break end
-            pcall(function() local a=Instance.new("Animation"); a.AnimationId="rbxassetid://0"; local tr=anim:LoadAnimation(a); tr:Play(); tr:AdjustSpeed(1000) end)
-        end
-        local hum = obj:FindFirstChildOfClass("Humanoid"); if hum then task.wait(0.1); pcall(function() hum:TakeDamage(math.huge); hum.Health=0 end) end
-    end)
-end
-
-local function kill_130_AttachmentOrbitChaos(obj)
-    claimFE(obj); task.spawn(function()
-        local atts = {}; for _,a in ipairs(obj:GetDescendants()) do if a:IsA("Attachment") then table.insert(atts, a) end end
-        for tick=1,40 do
-            if not obj or not obj.Parent then break end
-            for i,att in ipairs(atts) do pcall(function() local t=tick*0.15+i*0.5; att.CFrame = CFrame.new(math.sin(t)*100, math.cos(t)*100, math.sin(t*2)*100) end) end
-            task.wait(0.02)
-        end
-    end)
-end
-
-local function kill_133_BodyForceInfinitePush(obj)
-    claimFE(obj)
-    task.spawn(function()
-        for _,p in ipairs(obj:GetDescendants()) do
-            if p:IsA("BasePart") then pcall(function() local bv=Instance.new("BodyVelocity"); bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Velocity=Vector3.new((math.random()-0.5)*500, math.random()*800, (math.random()-0.5)*500); bv.Parent=p; game:GetService("Debris"):AddItem(bv,1) end) end
-        end
-        task.wait(0.5)
-        local hum = obj:FindFirstChildOfClass("Humanoid"); if hum then pcall(function() hum:TakeDamage(math.huge); hum.Health=0 end) end
-    end)
-end
-
--- 🦾 140. SKINNED MESH ANNIHILATE — атака на LayeredClothing/SkinnedMeshPart
-local function kill_140_SkinnedMeshAnnihilate(obj)
-    claimFE(obj); print("[🦾 v37 140] SkinnedMeshAnnihilate:", obj.Name)
+    print("[⭐ v37 140] SkinnedMeshAnnihilate (MOST POWERFUL):", obj.Name)
     pcall(function()
         for _,d in ipairs(obj:GetDescendants()) do
             if d:IsA("WrapLayer") or d:IsA("WrapTarget") then pcall(function() d:Destroy() end) end
-            if d:IsA("MeshPart") then
-                pcall(function()
-                    d.HasSkinnedMesh = false
-                    d.Size = Vector3.new(0.01,0.01,0.01)
-                end)
-            end
-            if d:IsA("Bone") then
-                pcall(function()
-                    d.Position = Vector3.new(math.random(-1e6,1e6),math.random(-1e6,1e6),math.random(-1e6,1e6))
-                    d.Transform = CFrame.new(math.random(-9999,9999),math.random(-9999,9999),math.random(-9999,9999))
-                end)
-            end
+            if d:IsA("MeshPart") then pcall(function() d.HasSkinnedMesh=false; d.Size=Vector3.new(0.01,0.01,0.01) end) end
+            if d:IsA("Bone") then pcall(function() d.Position=Vector3.new(math.random(-1e6,1e6),math.random(-1e6,1e6),math.random(-1e6,1e6)); d.Transform=CFrame.new(math.random(-9999,9999),math.random(-9999,9999),math.random(-9999,9999)) end) end
         end
-        local hum = obj:FindFirstChildOfClass("Humanoid"); if hum then pcall(function() hum:TakeDamage(math.huge) end) end
+        local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h:TakeDamage(math.huge) end) end
     end)
 end
+registerMethod(140, "CustomRigs", "⭐ 140. SkinnedMesh Annihilate", "MOST POWERFUL — убил босса в другой игре!", m_140)
 
--- 🦾 144. CONTROLLER MANAGER HIJACK — для NPC с новой физикой ControllerManager
-local function kill_144_ControllerManagerHijack(obj)
-    claimFE(obj); print("[🦾 v37 144] ControllerManager Hijack:", obj.Name)
+local function m_144(obj) claimFE(obj); pcall(function() for _,d in ipairs(obj:GetDescendants()) do if d:IsA("ControllerManager") then pcall(function() d.BaseMoveSpeed=0; d.BaseTurnSpeed=0; d.FacingDirection=Vector3.zero end) end; if d:IsA("GroundController") or d:IsA("AirController") or d:IsA("SwimController") or d:IsA("ClimbController") then pcall(function() d.MoveSpeedFactor=0 end) end end; local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Ragdoll); h.Health=0 end) end end) end
+registerMethod(144, "CustomRigs", "144. ControllerManager Hijack", "BaseMoveSpeed=0", m_144)
+
+-- 🦾 147. MESH ID CORRUPTION — подмена MeshId босса
+local function m_147(obj)
+    claimFE(obj)
+    print("[🦾 v38 147] MeshId Corruption:", obj.Name)
     pcall(function()
         for _,d in ipairs(obj:GetDescendants()) do
-            if d:IsA("ControllerManager") then
+            if d:IsA("SpecialMesh") then pcall(function() d.MeshId=""; d.TextureId=""; d.Scale=Vector3.new(0,0,0) end)
+            elseif d:IsA("MeshPart") then pcall(function() d.MeshId=""; d.TextureID=""; d.Size=Vector3.new(0.01,0.01,0.01) end)
+            elseif d:IsA("BlockMesh") or d:IsA("CylinderMesh") then pcall(function() d.Scale=Vector3.new(0,0,0) end) end
+        end
+        local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h:TakeDamage(math.huge) end) end
+    end)
+end
+registerMethod(147, "CustomRigs", "147. MeshId Corruption", "MeshId='' + Scale=0", m_147)
+
+-- 🦾 151. PART SHAPE MORPH — Shape=Ball всё катится
+local function m_151(obj)
+    claimFE(obj)
+    print("[🦾 v38 151] Part Shape Morph → Ball:", obj.Name)
+    pcall(function()
+        for _,d in ipairs(obj:GetDescendants()) do
+            if d:IsA("Part") then
                 pcall(function()
-                    d.BaseMoveSpeed = 0
-                    d.BaseTurnSpeed = 0
-                    d.FacingDirection = Vector3.zero
-                    d.MovingDirection = Vector3.zero
-                    d.ActiveController = nil
+                    d.Shape = Enum.PartType.Ball
+                    d.CanCollide = true
+                    d.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0, 1, 100, 100)
                 end)
             end
-            if d:IsA("GroundController") or d:IsA("AirController") or d:IsA("SwimController") or d:IsA("ClimbController") then
-                pcall(function() d.MoveSpeedFactor = 0; d.TurnSpeedFactor = 0 end)
-            end
         end
-        local hum = obj:FindFirstChildOfClass("Humanoid"); if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Ragdoll); hum.Health=0 end) end
+        local h=obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Physics); h:TakeDamage(math.huge) end) end
     end)
 end
+registerMethod(151, "CustomRigs", "151. Part Shape → Ball", "Shape=Ball + физика скольжения", m_151)
 
--- ============================================================================
--- 📊 КАСТ: MATH STATS (краш чисел, HP, щиты)
--- ============================================================================
-
-local function kill_4_ValueAttrZero(obj)
-    claimFE(obj); for _,val in ipairs(obj:GetDescendants()) do
-        if val:IsA("NumberValue") or val:IsA("IntValue") then
-            local nm = string.lower(val.Name)
-            if string.find(nm,"hp") or string.find(nm,"health") or string.find(nm,"life") or string.find(nm,"shield") then pcall(function() val.Value = 0 end) end
-        end
-    end
-    for attr,_ in pairs(obj:GetAttributes()) do
-        local nm = string.lower(attr)
-        if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() obj:SetAttribute(attr, 0) end) end
-    end
-end
-
-local function kill_11_TakeDamageLoop(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
-    if hum then task.spawn(function() for i=1,15 do if not obj.Parent then break end; pcall(function() hum:TakeDamage(math.huge); hum.Health=0 end); task.wait(0.03) end end) end
-end
-
-local function kill_12_NaNCrash(obj)
-    for _,val in ipairs(obj:GetDescendants()) do if val:IsA("NumberValue") then local nm=string.lower(val.Name); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() val.Value = 0/0 end) end end end
-    for attr,_ in pairs(obj:GetAttributes()) do if string.find(string.lower(attr),"health") then pcall(function() obj:SetAttribute(attr, 0/0) end) end end
-end
-
-local function kill_13_DoubleOverflow(obj)
-    for _,val in ipairs(obj:GetDescendants()) do if val:IsA("NumberValue") then local nm=string.lower(val.Name); if string.find(nm,"hp") or string.find(nm,"damage") then pcall(function() val.Value = 1e308 end) end end end
-end
-
-local function kill_14_NegativeHP(obj)
-    for _,val in ipairs(obj:GetDescendants()) do if val:IsA("NumberValue") or val:IsA("IntValue") then local nm=string.lower(val.Name); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() val.Value = -999999 end) end end end
-end
-
-local function kill_15_StripShields(obj)
-    for _,ff in ipairs(obj:GetDescendants()) do if ff:IsA("ForceField") then pcall(function() ff:Destroy() end) end end
-    for _,val in ipairs(obj:GetDescendants()) do if val:IsA("NumberValue") or val:IsA("BoolValue") then local nm=string.lower(val.Name); if string.find(nm,"shield") or string.find(nm,"armor") or string.find(nm,"god") then pcall(function() if val:IsA("BoolValue") then val.Value=false else val.Value=0 end end) end end end
-end
-
-local function kill_16_MaxHealthShrink(obj)
-    local hum = obj:FindFirstChildOfClass("Humanoid")
-    if hum then pcall(function() hum.MaxHealth=1; hum.Health=0; hum:TakeDamage(999999) end) end
-end
-
-local function kill_91_ShieldVaporizer(obj)
-    local root=getRootPart(obj); local hum=obj:FindFirstChildOfClass("Humanoid")
-    for _,item in ipairs({obj,root,hum}) do if item then for _,attr in ipairs({"Shield","Armor","GodMode","Invulnerable"}) do pcall(function() item:SetAttribute(attr,0) end) end; pcall(function() item:SetAttribute("Health",1) end) end end
-end
-
-local function kill_118_HealthClampOverride(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid")
-    task.spawn(function()
-        for i=1,30 do
-            if not obj.Parent then break end
-            pcall(function() if hum then hum.MaxHealth=0; hum.Health=0; hum:TakeDamage(math.huge) end end)
-            for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") then local nm=string.lower(v.Name); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() v.Value=0 end) end end end
-            task.wait(0.02)
-        end
-    end)
-end
-
-local function kill_122_MassiveTakeDamage(obj)
-    claimFE(obj); local hum = obj:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    task.spawn(function() for wave=1,5 do if not obj.Parent then break end; for i=1,100 do pcall(function() hum:TakeDamage(1e9) end) end; pcall(function() hum.Health=0 end); task.wait(0.03) end end)
-end
-
-local function kill_136_ChildrenCascadePurge(obj)
+-- 🦾 154. CANQUERY DISABLE STORM — вырубаем hitboxes
+local function m_154(obj)
+    claimFE(obj)
+    print("[🦾 v38 154] CanQuery Disable Storm:", obj.Name)
     pcall(function()
-        for _,v in ipairs(obj:GetDescendants()) do
-            pcall(function()
-                if v:IsA("NumberValue") or v:IsA("IntValue") then v.Value = 0
-                elseif v:IsA("BoolValue") then v.Value = false
-                elseif v:IsA("StringValue") then v.Value = "dead"
-                elseif v:IsA("Vector3Value") then v.Value = Vector3.zero end
-            end)
-        end
-        for attr,val in pairs(obj:GetAttributes()) do pcall(function() if type(val)=="number" then obj:SetAttribute(attr,0) elseif type(val)=="boolean" then obj:SetAttribute(attr,false) end end) end
-    end)
-end
-
--- 📊 138. HEALTH REGEN INVERSION — заражаем HealthRegenScript отрицательным
-local function kill_138_HealthRegenInversion(obj)
-    claimFE(obj); print("[📊 v37 138] Health Regen Inversion:", obj.Name)
-    pcall(function()
-        for _,v in ipairs(obj:GetDescendants()) do
-            if v:IsA("NumberValue") or v:IsA("IntValue") then
-                local nm = string.lower(v.Name)
-                if string.find(nm,"regen") or string.find(nm,"heal") or string.find(nm,"restore") then
-                    pcall(function() v.Value = -1e6 end)
+        for _,d in ipairs(obj:GetDescendants()) do
+            if d:IsA("BasePart") then
+                local nm = string.lower(d.Name)
+                -- Вырубаем hitboxes/weapons/attacks (не HRP/Torso!)
+                if string.find(nm,"hitbox") or string.find(nm,"weapon") or string.find(nm,"attack") or string.find(nm,"damage") or string.find(nm,"claw") or string.find(nm,"fist") or string.find(nm,"blade") then
+                    pcall(function() d.CanQuery=false; d.CanTouch=false; d.CanCollide=false; d.Transparency=1 end)
                 end
             end
         end
-        for attr,val in pairs(obj:GetAttributes()) do
-            local nm = string.lower(attr)
-            if string.find(nm,"regen") or string.find(nm,"heal") then pcall(function() obj:SetAttribute(attr, -1e6) end) end
-        end
-        -- Плюс собственный анти-регенер: слушаем HP и роняем при изменении
-        local hum = obj:FindFirstChildOfClass("Humanoid")
-        if hum then
-            local conn
-            conn = hum.HealthChanged:Connect(function(newHP)
-                if newHP > 0 then pcall(function() hum.Health = 0; hum:TakeDamage(math.huge) end) end
-            end)
-            task.delay(15, function() if conn then conn:Disconnect() end end)
-        end
+        -- Плюс наносим FE-урон
+        local h=obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:TakeDamage(math.huge); h.Health=0 end) end
     end)
 end
+registerMethod(154, "CustomRigs", "154. CanQuery Disable Storm", "Вырубить hitboxes/weapons/claws", m_154)
 
--- 📊 143. DEFENSE ATTRIBUTE HIJACK — Damage↑, Defense↓, Armor=0
-local function kill_143_DefenseAttributeHijack(obj)
-    print("[📊 v37 143] Defense Attribute Hijack:", obj.Name)
+-- ============================================================================
+-- 📊 КАСТ: MATH STATS
+-- ============================================================================
+
+local function m_4(obj) claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") or v:IsA("IntValue") then local nm=string.lower(v.Name); if string.find(nm,"hp") or string.find(nm,"health") or string.find(nm,"shield") then pcall(function() v.Value=0 end) end end end; for a,_ in pairs(obj:GetAttributes()) do local nm=string.lower(a); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() obj:SetAttribute(a,0) end) end end end
+registerMethod(4, "MathStats", "4. Value/Attr Zero", "Все HP-подобные value → 0", m_4)
+
+local function m_11(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); if h then task.spawn(function() for i=1,15 do if not obj.Parent then break end; pcall(function() h:TakeDamage(math.huge); h.Health=0 end); task.wait(0.03) end end) end end
+registerMethod(11, "MathStats", "11. TakeDamage Loop", "TakeDamage(math.huge) × 15", m_11)
+
+local function m_12(obj) for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") then local nm=string.lower(v.Name); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() v.Value=0/0 end) end end end end
+registerMethod(12, "MathStats", "12. NaN Math Crash", "HP = 0/0 (NaN)", m_12)
+
+local function m_13(obj) for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") then local nm=string.lower(v.Name); if string.find(nm,"hp") or string.find(nm,"damage") then pcall(function() v.Value=1e308 end) end end end end
+registerMethod(13, "MathStats", "13. Double Overflow 1e308", "HP/Damage = 1e308", m_13)
+
+local function m_14(obj) for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") or v:IsA("IntValue") then local nm=string.lower(v.Name); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() v.Value=-999999 end) end end end end
+registerMethod(14, "MathStats", "14. Negative HP Inversion", "HP = -999999", m_14)
+
+local function m_15(obj) for _,ff in ipairs(obj:GetDescendants()) do if ff:IsA("ForceField") then pcall(function() ff:Destroy() end) end end; for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") or v:IsA("BoolValue") then local nm=string.lower(v.Name); if string.find(nm,"shield") or string.find(nm,"armor") or string.find(nm,"god") then pcall(function() if v:IsA("BoolValue") then v.Value=false else v.Value=0 end end) end end end end
+registerMethod(15, "MathStats", "15. Strip Shields", "Уничтожение ForceField + shield=0", m_15)
+
+local function m_16(obj) local h=obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h.MaxHealth=1; h.Health=0; h:TakeDamage(999999) end) end end
+registerMethod(16, "MathStats", "16. MaxHealth Shrink to 1", "MaxHealth=1 → Health=0", m_16)
+
+local function m_91(obj) local r=getRootPart(obj); local h=obj:FindFirstChildOfClass("Humanoid"); for _,it in ipairs({obj,r,h}) do if it then for _,a in ipairs({"Shield","Armor","GodMode","Invulnerable"}) do pcall(function() it:SetAttribute(a,0) end) end end end end
+registerMethod(91, "MathStats", "91. Shield Vaporizer", "Shield/Armor/GodMode = 0", m_91)
+
+local function m_118(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); task.spawn(function() for i=1,30 do if not obj.Parent then break end; pcall(function() if h then h.MaxHealth=0; h.Health=0; h:TakeDamage(math.huge) end end); for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") then local nm=string.lower(v.Name); if string.find(nm,"hp") or string.find(nm,"health") then pcall(function() v.Value=0 end) end end end; task.wait(0.02) end end) end
+registerMethod(118, "MathStats", "118. Health Clamp Override", "MaxHealth=0 loop x30", m_118)
+
+local function m_122(obj) claimFE(obj); local h=obj:FindFirstChildOfClass("Humanoid"); if not h then return end; task.spawn(function() for wave=1,5 do if not obj.Parent then break end; for i=1,100 do pcall(function() h:TakeDamage(1e9) end) end; pcall(function() h.Health=0 end); task.wait(0.03) end end) end
+registerMethod(122, "MathStats", "122. Massive TakeDamage 100x", "100 × TakeDamage(1e9) в 5 волн", m_122)
+
+local function m_136(obj) pcall(function() for _,v in ipairs(obj:GetDescendants()) do pcall(function() if v:IsA("NumberValue") or v:IsA("IntValue") then v.Value=0 elseif v:IsA("BoolValue") then v.Value=false elseif v:IsA("StringValue") then v.Value="dead" elseif v:IsA("Vector3Value") then v.Value=Vector3.zero end end) end; for a,vl in pairs(obj:GetAttributes()) do pcall(function() if type(vl)=="number" then obj:SetAttribute(a,0) elseif type(vl)=="boolean" then obj:SetAttribute(a,false) end end) end end) end
+registerMethod(136, "MathStats", "136. Cascade Purge", "Обнуление всех Value/Attribute", m_136)
+
+local function m_138(obj) claimFE(obj); pcall(function() for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") or v:IsA("IntValue") then local nm=string.lower(v.Name); if string.find(nm,"regen") or string.find(nm,"heal") then pcall(function() v.Value=-1e6 end) end end end; for a,_ in pairs(obj:GetAttributes()) do local nm=string.lower(a); if string.find(nm,"regen") or string.find(nm,"heal") then pcall(function() obj:SetAttribute(a,-1e6) end) end end; local h=obj:FindFirstChildOfClass("Humanoid"); if h then local c; c=h.HealthChanged:Connect(function(nh) if nh>0 then pcall(function() h.Health=0; h:TakeDamage(math.huge) end) end end); task.delay(15,function() if c then c:Disconnect() end end) end end) end
+registerMethod(138, "MathStats", "138. Health Regen Inversion", "HealthRegen = -1e6 + auto-kill", m_138)
+
+local function m_143(obj) pcall(function() for _,v in ipairs(obj:GetDescendants()) do if v:IsA("NumberValue") or v:IsA("IntValue") then local nm=string.lower(v.Name); if string.find(nm,"defense") or string.find(nm,"armor") or string.find(nm,"resist") or string.find(nm,"block") then pcall(function() v.Value=0 end) elseif string.find(nm,"damagemulti") or string.find(nm,"multi") then pcall(function() v.Value=1000 end) end end end; for a,_ in pairs(obj:GetAttributes()) do local nm=string.lower(a); if string.find(nm,"defense") or string.find(nm,"armor") then pcall(function() obj:SetAttribute(a,0) end) elseif string.find(nm,"multi") then pcall(function() obj:SetAttribute(a,1000) end) end end end) end
+registerMethod(143, "MathStats", "143. Defense Attribute Hijack", "Armor=0, DmgMulti=1000", m_143)
+
+-- 📊 148. STATUS EFFECT INJECT — впрыск Poison/Burn/Bleed
+local function m_148(obj)
+    print("[📊 v38 148] Status Effect Inject:", obj.Name)
     pcall(function()
-        -- Дебафаем всё что связано с защитой, бафаем всё что связано с уроном
-        for _,v in ipairs(obj:GetDescendants()) do
-            if v:IsA("NumberValue") or v:IsA("IntValue") then
-                local nm = string.lower(v.Name)
-                if string.find(nm,"defense") or string.find(nm,"armor") or string.find(nm,"resist") or string.find(nm,"block") or string.find(nm,"reduction") then pcall(function() v.Value = 0 end)
-                elseif string.find(nm,"damagemulti") or string.find(nm,"dmgmulti") or string.find(nm,"multiplier") or string.find(nm,"vulnerable") then pcall(function() v.Value = 1000 end) end
-            end
+        local statuses = {"Poison","Burn","Bleed","Frozen","Stunned","Silenced","Cursed","Weakness","Vulnerable","DoT"}
+        for _,st in ipairs(statuses) do
+            obj:SetAttribute(st, true)
+            obj:SetAttribute(st.."Stacks", 999)
+            obj:SetAttribute(st.."Damage", 999999)
+            obj:SetAttribute(st.."Duration", math.huge)
         end
-        for attr,_ in pairs(obj:GetAttributes()) do
-            local nm = string.lower(attr)
-            if string.find(nm,"defense") or string.find(nm,"armor") or string.find(nm,"resist") or string.find(nm,"block") then pcall(function() obj:SetAttribute(attr, 0) end)
-            elseif string.find(nm,"multi") or string.find(nm,"vulnerable") then pcall(function() obj:SetAttribute(attr, 1000) end) end
+        -- Также создаём NumberValues
+        for _,st in ipairs(statuses) do
+            local v = Instance.new("NumberValue"); v.Name = st; v.Value = 999; v.Parent = obj
+            game:GetService("Debris"):AddItem(v, 30)
+        end
+        -- Loop наносящий DoT
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h then
+            task.spawn(function()
+                for i=1,30 do
+                    if not obj.Parent then break end
+                    pcall(function() h:TakeDamage(50000) end)
+                    task.wait(0.1)
+                end
+            end)
         end
     end)
 end
+registerMethod(148, "MathStats", "148. Status Effect Inject", "Poison/Burn/Bleed × 10 + DoT loop", m_148)
 
--- ============================================================================
--- 👑 КАСТ: GOLDEN GRAIL (TakeDamage DPS)
--- ============================================================================
-
-local function kill_86_GoldenGrailOverdrive(obj)
-    local hum = obj:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    local dmg = CombatSettings.DamageAmount
-    pcall(function() hum:TakeDamage(dmg); if dmg >= 999999 then hum.Health = 0 end end)
-end
-
--- 👑 141. GRAIL WAVE STACKING — 10 нарастающих волн TakeDamage
-local function kill_141_GrailWaveStacking(obj)
-    local hum = obj:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    print("[👑 v37 141] Grail Wave Stacking (10 волн):", obj.Name)
+-- 📊 153. MAX HEALTH LADDER — ступенями уменьшаем MaxHealth
+local function m_153(obj)
+    claimFE(obj)
+    local h = obj:FindFirstChildOfClass("Humanoid"); if not h then return end
+    print("[📊 v38 153] MaxHealth Ladder:", obj.Name)
     task.spawn(function()
-        for wave = 1, 10 do
-            if not obj or not obj.Parent then break end
-            local dmg = CombatSettings.DamageAmount * wave  -- 50K → 500K
-            pcall(function() hum:TakeDamage(dmg); if wave >= 8 then hum.Health = 0 end end)
+        local currentMax = h.MaxHealth
+        for step = 1, 20 do
+            if not obj.Parent then break end
+            pcall(function()
+                currentMax = currentMax * 0.5  -- половина каждый шаг
+                h.MaxHealth = math.max(1, currentMax)
+                h.Health = math.min(h.Health, h.MaxHealth)
+                if step >= 10 then h.MaxHealth = 0; h.Health = 0 end
+            end)
             task.wait(0.05)
         end
     end)
 end
+registerMethod(153, "MathStats", "153. MaxHealth Ladder", "MaxHealth ×0.5 × 20 шагов", m_153)
 
 -- ============================================================================
--- 🎮 НОВЫЙ КАСТ: PLAYER INPUT SIM (методы что не влезли в оригинальные 6)
+-- 👑 КАСТ: GOLDEN GRAIL
 -- ============================================================================
 
-local function kill_97_VirtualInputClickStorm(obj)
-    local root = getRootPart(obj); if not root then return end
+local function m_86(obj) local h=obj:FindFirstChildOfClass("Humanoid"); if not h then return end; local d=CombatSettings.DamageAmount; pcall(function() h:TakeDamage(d); if d>=999999 then h.Health=0 end end) end
+registerMethod(86, "GoldenGrail", "86. Golden Grail Overdrive", "Настраиваемый TakeDamage", m_86)
+
+local function m_141(obj) local h=obj:FindFirstChildOfClass("Humanoid"); if not h then return end; task.spawn(function() for wave=1,10 do if not obj.Parent then break end; local d=CombatSettings.DamageAmount*wave; pcall(function() h:TakeDamage(d); if wave>=8 then h.Health=0 end end); task.wait(0.05) end end) end
+registerMethod(141, "GoldenGrail", "141. Grail Wave Stacking", "10 нарастающих волн урона", m_141)
+
+-- 👑 152. GRAIL SHOTGUN BURST — 500 TakeDamage за 1 кадр
+local function m_152(obj)
+    local h = obj:FindFirstChildOfClass("Humanoid"); if not h then return end
+    print("[👑 v38 152] Grail Shotgun Burst 500x:", obj.Name)
     task.spawn(function()
-        for i=1,15 do
-            if not obj or not obj.Parent then break end
-            pcall(function()
-                local sp, on = cam:WorldToScreenPoint(root.Position)
-                if on then VIM:SendMouseButtonEvent(sp.X, sp.Y, 0, true, game, 0); task.wait(0.02); VIM:SendMouseButtonEvent(sp.X, sp.Y, 0, false, game, 0) end
-            end)
-            task.wait(0.08)
+        local dmg = CombatSettings.DamageAmount
+        for i=1,500 do pcall(function() h:TakeDamage(dmg) end) end
+        pcall(function() h.Health = 0 end)
+    end)
+end
+registerMethod(152, "GoldenGrail", "152. Grail Shotgun 500x", "500 × TakeDamage за 1 кадр", m_152)
+
+-- ============================================================================
+-- 🎮 КАСТ: PLAYER INPUT SIM (❌ удалены методы с кликом по экрану!)
+-- ============================================================================
+
+-- ❌ УДАЛЕНО: m_97 (VIM Click Storm — мешал)
+-- ❌ УДАЛЕНО: m_100 (Mobile Touch Emulator — мешал)
+-- ❌ УДАЛЕНО: m_104 (Camera Aim Lock + Fire — мешал)
+
+local function m_98(obj) local c=lp.Character; if not c then return end; local h=c:FindFirstChildOfClass("Humanoid"); if not h then return end; task.spawn(function() local tools={}; for _,t in ipairs(c:GetChildren()) do if t:IsA("Tool") then table.insert(tools,t) end end; for _,t in ipairs(lp.Backpack:GetChildren()) do if t:IsA("Tool") then table.insert(tools,t) end end; for _,t in ipairs(tools) do if not obj.Parent then break end; pcall(function() h:EquipTool(t) end); task.wait(0.1); for i=1,8 do pcall(function() t:Activate() end); task.wait(0.15); pcall(function() t:Deactivate() end); task.wait(0.05) end end end) end
+registerMethod(98, "PlayerInputSim", "98. Tool Activate Legit", "Cycle равномерных Activate/Deactivate", m_98)
+
+local function m_99(obj) local keys={Enum.KeyCode.Q,Enum.KeyCode.E,Enum.KeyCode.R,Enum.KeyCode.F,Enum.KeyCode.One,Enum.KeyCode.Two,Enum.KeyCode.Three,Enum.KeyCode.Four,Enum.KeyCode.Z,Enum.KeyCode.X,Enum.KeyCode.C,Enum.KeyCode.V}; task.spawn(function() for _,key in ipairs(keys) do pcall(function() VIM:SendKeyEvent(true,key,false,game); task.wait(0.05); VIM:SendKeyEvent(false,key,false,game) end); task.wait(0.1) end end) end
+registerMethod(99, "PlayerInputSim", "99. Ability Key Presser", "Нажатие Q/E/R/F/1/2/3/4", m_99)
+
+local function m_103(obj) local c=lp.Character; if not c then return end; local h=c:FindFirstChildOfClass("Humanoid"); for _,t in ipairs(lp.Backpack:GetChildren()) do if t:IsA("Tool") then pcall(function() h:EquipTool(t) end); task.wait(0.05) end end end
+registerMethod(103, "PlayerInputSim", "103. Inventory Auto-Equip", "Взять все Tools из бэкпака", m_103)
+
+local function m_142(obj) if not fireproximityprompt then return end; task.spawn(function() for wave=1,5 do if not obj.Parent then break end; for _,pp in ipairs(obj:GetDescendants()) do if pp:IsA("ProximityPrompt") then pcall(function() fireproximityprompt(pp) end) end end; local r=getRootPart(obj); if r then for _,pp in ipairs(ws:GetDescendants()) do if pp:IsA("ProximityPrompt") and pp.Parent and pp.Parent:IsA("BasePart") and (pp.Parent.Position-r.Position).Magnitude<30 then pcall(function() fireproximityprompt(pp) end) end end end; task.wait(0.1) end end) end
+registerMethod(142, "PlayerInputSim", "142. Proximity PP Abuse", "Триггер всех PP на боссе", m_142)
+
+-- ============================================================================
+-- 🔄 ВОССТАНОВЛЕННЫЕ МЕТОДЫ v39.0 (14 пропущенных из v32-v36)
+-- ============================================================================
+
+-- 👑 87. GRAIL OVERDRIVE COMPOSITE — TakeDamage 999K + брутфорс remote-эхо
+local function m_87(obj)
+    local h = obj:FindFirstChildOfClass("Humanoid")
+    if h then pcall(function() h:TakeDamage(999999); h.Health = 0 end) end
+    -- Плюс эхо через combat remotes
+    task.spawn(function()
+        for _,r in ipairs(DeepAnalysisData.CombatRemotes) do
+            pcall(function() if r:IsA("RemoteEvent") then r:FireServer(obj); r:FireServer(obj,999999) end end)
         end
     end)
 end
+registerMethod(87, "GoldenGrail", "87. Grail Overdrive Composite", "TakeDamage 999K + эхо ремоутов", m_87)
 
-local function kill_98_ToolActivateLegit(obj)
+-- 📡 89. CUSTOM WELD DETACH — бесшумный отрыв Weld связанных с оружием
+local function m_89(obj)
+    claimFE(obj)
+    print("[📡 89] Custom Weld Detach:", obj.Name)
+    for _,v in ipairs(obj:GetDescendants()) do
+        if v:IsA("Weld") or v:IsA("Motor6D") or v:IsA("WeldConstraint") then
+            if v.Part1 and (string.find(string.lower(v.Part1.Name), "weapon") or string.find(string.lower(v.Part1.Name), "sword") or string.find(string.lower(v.Part1.Name), "blade") or string.find(string.lower(v.Part1.Name), "gun") or string.find(string.lower(v.Part1.Name), "hitbox")) then
+                pcall(function() v.Part0 = nil; v.Part1 = nil end)
+            end
+        end
+    end
+end
+registerMethod(89, "RemotesWeapons", "89. Custom Weld Detach", "Отрыв Weld оружия (Part0=nil)", m_89)
+
+-- 🩸 92. SEAT SKY FREEZE — сидение и заморозка NPC на Y=2000
+local function m_92(obj)
+    local h = obj:FindFirstChildOfClass("Humanoid"); local r = getRootPart(obj)
+    if not h or not r then return end
+    print("[🩸 92] Seat Sky Freeze:", obj.Name)
+    task.spawn(function()
+        local seat = Instance.new("Seat")
+        seat.Name = "_SkyFreezeSeat"; seat.Transparency = 1; seat.CanCollide = false
+        seat.CFrame = r.CFrame; seat.Parent = ws
+        pcall(function() seat:Sit(h) end); task.wait(0.08)
+        pcall(function()
+            seat.CFrame = CFrame.new(r.Position.X, 2000, r.Position.Z)
+            seat.Anchored = true
+            if obj.BreakJoints then obj:BreakJoints() end
+        end)
+        game:GetService("Debris"):AddItem(seat, 15)
+    end)
+end
+registerMethod(92, "FEClassic", "92. Seat Sky Freeze", "Посадить в Seat и заморозить в небе", m_92)
+
+-- 🎮 93. PROXIMITY DUNGEON OVERLOAD — овердрайв всех ProximityPrompt и ClickDetector
+local function m_93(obj)
+    print("[🎮 93] Proximity Dungeon Overload")
+    for _,d in ipairs(ws:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then
+            pcall(function() if fireproximityprompt then fireproximityprompt(d) end end)
+        elseif d:IsA("ClickDetector") then
+            pcall(function() if fireclickdetector then fireclickdetector(d) end end)
+        end
+    end
+end
+registerMethod(93, "PlayerInputSim", "93. Dungeon PP/Click Overload", "Все PP + ClickDetector в мире", m_93)
+
+-- 📊 96. UNIVERSAL TAG EXECUTION — массовое присвоение death-тегов
+local function m_96(obj)
+    print("[📊 96] Universal Tag Execution:", obj.Name)
+    pcall(function()
+        local tags = {"Dead","Killed","KillBrick","Lava","Spike","Despawn","Garbage","Remove","Destroy","Deadly","DamageZone","Hazard","Trap","Death","Void"}
+        for _,tag in ipairs(tags) do
+            pcall(function() CollectionService:AddTag(obj, tag) end)
+            local r = getRootPart(obj); if r then pcall(function() CollectionService:AddTag(r, tag) end) end
+            for _,p in ipairs(obj:GetDescendants()) do
+                if p:IsA("BasePart") then pcall(function() CollectionService:AddTag(p, tag) end) end
+            end
+        end
+    end)
+end
+registerMethod(96, "MathStats", "96. Universal Death Tag", "Все death-теги на NPC (KillBrick/Lava/etc)", m_96)
+
+-- 🛡️ 102. SELF-KICK PREVENTION — простая защита от кика (без хуков)
+local function m_102(obj)
     local char = lp.Character; if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+    local myHum = char:FindFirstChildOfClass("Humanoid"); if not myHum then return end
+    print("[🛡️ 102] Self-Kick Prevention (base)")
     task.spawn(function()
-        local tools = {}
-        for _,t in ipairs(char:GetChildren()) do if t:IsA("Tool") then table.insert(tools, t) end end
-        for _,t in ipairs(lp.Backpack:GetChildren()) do if t:IsA("Tool") then table.insert(tools, t) end end
-        for _,tool in ipairs(tools) do
+        for i=1,20 do
+            pcall(function()
+                if myHum.Health < myHum.MaxHealth * 0.5 then myHum.Health = myHum.MaxHealth end
+                if not char:FindFirstChildOfClass("ForceField") then
+                    local ff = Instance.new("ForceField"); ff.Visible = false; ff.Parent = char
+                    game:GetService("Debris"):AddItem(ff, 3)
+                end
+            end)
+            task.wait(0.5)
+        end
+    end)
+    pcall(function() myHum.BreakJointsOnDeath = false end)
+end
+registerMethod(102, "PlayerInputSim", "102. Self-Kick Prevention (Base)", "Базовая защита игрока (не хук, доп. к Anti-Kick PRO)", m_102)
+
+-- 💥 119. FORCEFIELD DEATH TRAP — 5 Explosion с DestroyJointRadiusPercent=1
+local function m_119(obj)
+    claimFE(obj)
+    print("[💥 119] ForceField Death Trap:", obj.Name)
+    pcall(function()
+        for _,ff in ipairs(obj:GetDescendants()) do if ff:IsA("ForceField") then ff:Destroy() end end
+        local r = getRootPart(obj)
+        if r then
+            for i=1,5 do
+                local exp = Instance.new("Explosion")
+                exp.Position = r.Position; exp.BlastRadius = 50; exp.BlastPressure = 0
+                exp.DestroyJointRadiusPercent = 1; exp.ExplosionType = Enum.ExplosionType.NoCraters
+                exp.Parent = ws
+            end
+        end
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:TakeDamage(math.huge); h.Health = 0; h:ChangeState(Enum.HumanoidStateType.Dead) end) end
+    end)
+end
+registerMethod(119, "FEClassic", "119. FF Death Trap (5 Explosions)", "5 Explosion с DestroyJoint=1", m_119)
+
+-- 📊 120. NEUTRAL TEAM ABUSE — сброс команды NPC для нашего оружия
+local function m_120(obj)
+    print("[📊 120] Neutral Team Abuse:", obj.Name)
+    pcall(function()
+        for _,p in ipairs(obj:GetDescendants()) do
+            if p:IsA("BasePart") then pcall(function() p.BrickColor = BrickColor.new("Medium stone grey") end) end
+        end
+        for _,attr in ipairs({"Team","TeamColor","Faction","Side","Enemy","IsEnemy","Friendly","Alliance"}) do
+            pcall(function() obj:SetAttribute(attr, "Neutral") end)
+            pcall(function() obj:SetAttribute(attr, false) end)
+        end
+        for _,v in ipairs(obj:GetDescendants()) do
+            if v:IsA("ObjectValue") or v:IsA("BrickColorValue") or v:IsA("StringValue") then
+                local nm = string.lower(v.Name)
+                if string.find(nm,"team") or string.find(nm,"faction") then pcall(function() if v:IsA("StringValue") then v.Value = "Neutral" else v.Value = nil end end) end
+            end
+        end
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:TakeDamage(math.huge); h.Health = 0 end) end
+    end)
+end
+registerMethod(120, "MathStats", "120. Neutral Team Abuse", "Смена TeamColor+Faction → уязвим", m_120)
+
+-- 💥 125. EXPLOSION SPAM RING — 20 взрывов кольцом вокруг NPC
+local function m_125(obj)
+    local r = getRootPart(obj); if not r then return end
+    print("[💥 125] Explosion Spam Ring 20x:", obj.Name)
+    task.spawn(function()
+        for i=1,20 do
             if not obj.Parent then break end
-            pcall(function() hum:EquipTool(tool) end); task.wait(0.1)
-            for i=1,8 do pcall(function() tool:Activate() end); task.wait(0.15); pcall(function() tool:Deactivate() end); task.wait(0.05) end
+            pcall(function()
+                local angle = (i/20) * math.pi * 2
+                local offset = Vector3.new(math.cos(angle)*3, 0, math.sin(angle)*3)
+                local exp = Instance.new("Explosion")
+                exp.Position = r.Position + offset
+                exp.BlastRadius = 15; exp.BlastPressure = 0
+                exp.DestroyJointRadiusPercent = 1; exp.ExplosionType = Enum.ExplosionType.NoCraters
+                exp.Parent = ws
+                local h = obj:FindFirstChildOfClass("Humanoid")
+                if h then h:TakeDamage(100000) end
+            end)
+            task.wait(0.02)
         end
     end)
 end
+registerMethod(125, "FEClassic", "125. Explosion Ring 20x", "20 Explosion кольцом вокруг NPC", m_125)
 
-local function kill_99_AbilityKeyPresser(obj)
-    local keys = { Enum.KeyCode.Q, Enum.KeyCode.E, Enum.KeyCode.R, Enum.KeyCode.F, Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V }
-    local root = getRootPart(obj)
+-- 🔥 126. ULTIMATE FE COMBO — комбо всех FE методов подряд
+local function m_126(obj)
+    print("[🔥 126] Ultimate FE Combo:", obj.Name)
     task.spawn(function()
-        if root then pcall(function() cam.CFrame = CFrame.new(cam.CFrame.Position, root.Position) end) end
-        for _,key in ipairs(keys) do pcall(function() VIM:SendKeyEvent(true, key, false, game); task.wait(0.05); VIM:SendKeyEvent(false, key, false, game) end); task.wait(0.1) end
+        m_120(obj); task.wait(0.02)
+        m_118(obj); task.wait(0.02)
+        m_117(obj); task.wait(0.02)
+        m_121(obj); task.wait(0.02)
+        m_123(obj); task.wait(0.02)
+        m_122(obj); task.wait(0.03)
+        m_119(obj); task.wait(0.03)
+        m_124(obj); task.wait(0.03)
+        m_125(obj)
     end)
 end
+registerMethod(126, "FEClassic", "126. 🔥 Ultimate FE Combo", "Все FE методы подряд с задержками", m_126)
 
-local function kill_100_MobileTouchEmulator(obj)
-    local root = getRootPart(obj); if not root then return end
+-- 🦾 129. SOUND FREQUENCY WEAPON — Sound с PlaybackSpeed=math.huge
+local function m_129(obj)
+    local r = getRootPart(obj); if not r then return end
+    print("[🦾 129] Sound Frequency Weapon:", obj.Name)
     task.spawn(function()
         for i=1,10 do
             if not obj.Parent then break end
-            pcall(function() local sp, on = cam:WorldToScreenPoint(root.Position); if on then VIM:SendTouchEvent(1,1,sp.X,sp.Y); task.wait(0.03); VIM:SendTouchEvent(1,2,sp.X,sp.Y); task.wait(0.03); VIM:SendTouchEvent(1,3,sp.X,sp.Y) end end)
-            task.wait(0.15)
-        end
-    end)
-end
-
-local function kill_103_InventoryAutoEquip(obj)
-    local char = lp.Character; if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    for _,t in ipairs(lp.Backpack:GetChildren()) do if t:IsA("Tool") then pcall(function() hum:EquipTool(t) end); task.wait(0.05) end end
-    local pg = lp:FindFirstChild("PlayerGui"); if not pg then return end
-    task.spawn(function()
-        for _,gui in ipairs(pg:GetDescendants()) do
-            if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and gui.Visible then
-                local nm = string.lower(gui.Name..(gui.Parent and gui.Parent.Name or ""))
-                if string.find(nm,"weapon") or string.find(nm,"sword") or string.find(nm,"slot") or string.find(nm,"equip") then
-                    pcall(function() local abs=gui.AbsolutePosition; local sz=gui.AbsoluteSize; VIM:SendMouseButtonEvent(abs.X+sz.X/2, abs.Y+sz.Y/2, 0, true, game, 0); task.wait(0.03); VIM:SendMouseButtonEvent(abs.X+sz.X/2, abs.Y+sz.Y/2, 0, false, game, 0) end)
-                    task.wait(0.05)
-                end
-            end
-        end
-    end)
-end
-
-local function kill_104_CameraAimLockFire(obj)
-    local root = getRootPart(obj); if not root then return end
-    local char = lp.Character; if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    task.spawn(function()
-        for i=1,12 do
-            if not obj.Parent then break end
             pcall(function()
-                cam.CFrame = CFrame.new(hrp.Position + Vector3.new(0,2,0), root.Position)
-                local vps = cam.ViewportSize
-                VIM:SendMouseButtonEvent(vps.X/2, vps.Y/2, 0, true, game, 0); task.wait(0.03)
-                VIM:SendMouseButtonEvent(vps.X/2, vps.Y/2, 0, false, game, 0)
-                local tool = char:FindFirstChildOfClass("Tool"); if tool then tool:Activate() end
+                local s = Instance.new("Sound")
+                s.SoundId = "rbxassetid://9046196336"
+                s.Volume = 10; s.PlaybackSpeed = math.huge; s.Pitch = 20
+                s.RollOffMaxDistance = 10000
+                s.Parent = r; s:Play()
+                game:GetService("Debris"):AddItem(s, 0.5)
             end)
-            task.wait(0.1)
+            task.wait(0.05)
         end
+        local h = obj:FindFirstChildOfClass("Humanoid"); if h then pcall(function() h:TakeDamage(math.huge) end) end
     end)
 end
+registerMethod(129, "CustomRigs", "129. Sound Freq Weapon", "Sound PlaybackSpeed=huge (лаг-урон)", m_129)
 
--- 🎮 142. PROXIMITY PROMPT ABUSE — триггерим все PP на боссе и вокруг
-local function kill_142_ProximityPromptAbuse(obj)
-    print("[🎮 v37 142] Proximity Prompt Abuse:", obj.Name)
-    if not fireproximityprompt then print("  [!] fireproximityprompt недоступен"); return end
+-- 🦾 131. COLLISION GROUP ISOLATE — свой CollisionGroup → падение сквозь пол
+local function m_131(obj)
+    claimFE(obj)
+    print("[🦾 131] Collision Group Isolate:", obj.Name)
+    pcall(function()
+        local groupName = "NPCVoid_" .. tostring(math.random(1000,9999))
+        pcall(function() PhysicsService:RegisterCollisionGroup(groupName) end)
+        pcall(function() PhysicsService:CollisionGroupSetCollidable(groupName, "Default", false) end)
+        for _,p in ipairs(obj:GetDescendants()) do
+            if p:IsA("BasePart") then
+                pcall(function() p.CollisionGroup = groupName; p.CanCollide = false; p.Massless = true end)
+            end
+        end
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.FallingDown); h:TakeDamage(math.huge) end) end
+    end)
+end
+registerMethod(131, "CustomRigs", "131. CollisionGroup Isolate", "Свой CollisionGroup → провал сквозь пол", m_131)
+
+-- 🦾 132. NETWORK OWNER PING-PONG — 20 переключений NetworkOwner = десинк
+local function m_132(obj)
+    print("[🦾 132] NetworkOwner Ping-Pong:", obj.Name)
     task.spawn(function()
-        for wave=1,5 do
+        local parts = {}
+        for _,p in ipairs(obj:GetDescendants()) do if p:IsA("BasePart") and not p.Anchored then table.insert(parts, p) end end
+        for wave=1,20 do
             if not obj.Parent then break end
-            for _,pp in ipairs(obj:GetDescendants()) do
-                if pp:IsA("ProximityPrompt") then
-                    pcall(function() fireproximityprompt(pp) end)
-                    pcall(function() pp:InputHoldBegin(); task.wait(pp.HoldDuration + 0.01); pp:InputHoldEnd() end)
-                end
+            for _,p in ipairs(parts) do
+                pcall(function()
+                    if wave % 2 == 0 then p:SetNetworkOwner(lp)
+                    else p:SetNetworkOwner(nil); p:SetNetworkOwnershipAuto() end
+                end)
             end
-            local root = getRootPart(obj)
-            if root then
-                for _,pp in ipairs(ws:GetDescendants()) do
-                    if pp:IsA("ProximityPrompt") and pp.Parent and pp.Parent:IsA("BasePart") and (pp.Parent.Position - root.Position).Magnitude < 30 then
-                        pcall(function() fireproximityprompt(pp) end)
-                    end
-                end
-            end
-            task.wait(0.1)
+            task.wait(0.03)
         end
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:TakeDamage(math.huge); h.Health = 0 end) end
     end)
 end
+registerMethod(132, "CustomRigs", "132. NetworkOwner Ping-Pong", "20× переключений NetOwner (десинк)", m_132)
 
--- ============================================================================
--- 🚀 КАСТ: DESTROYER SERVER (полёт в космос - OFF by default)
--- ============================================================================
-
-local function kill_10_AngularSpin(obj)
-    claimFE(obj); local root=getRootPart(obj); if not root then return end
-    pcall(function() root.AssemblyAngularVelocity = Vector3.new(1e6,1e6,1e6) end)
+-- 🦾 135. MESH RESIZE OVERFLOW — NPC в 1 см = глюки коллизий и урон
+local function m_135(obj)
+    claimFE(obj)
+    print("[🦾 135] Mesh Resize Overflow:", obj.Name)
+    pcall(function()
+        for _,p in ipairs(obj:GetDescendants()) do
+            if p:IsA("BasePart") or p:IsA("MeshPart") then
+                pcall(function() p.Size = Vector3.new(0.01, 0.01, 0.01); p.Massless = true end)
+            end
+            if p:IsA("SpecialMesh") or p:IsA("BlockMesh") or p:IsA("CylinderMesh") then
+                pcall(function() p.Scale = Vector3.new(0.001, 0.001, 0.001) end)
+            end
+        end
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h then pcall(function() h:TakeDamage(math.huge); h.Health = 0 end) end
+    end)
 end
-
-local function kill_29_SupersonicLaunch(obj)
-    claimFE(obj); local root=getRootPart(obj); if not root then return end
-    pcall(function() root.CanCollide=false; root.CFrame = root.CFrame + Vector3.new(0,50,0); root.AssemblyLinearVelocity = Vector3.new(1e9,1e9,-1e9) end)
-end
-
-local function kill_41_MotorCFrameCrush(obj)
-    claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do
-        if v:IsA("Motor6D") or v:IsA("Weld") then pcall(function() v.C0 = CFrame.new(0,-5000,0); v.C1 = CFrame.new(10000,10000,10000) end) end
-    end
-end
+registerMethod(135, "CustomRigs", "135. Mesh Resize Overflow", "Все parts → 1см (глюки hitbox)", m_135)
 
 -- ============================================================================
--- 🛡️ ANTI-ROLLBACK (v33 — глобальный helper, срабатывает через ЛЮБОЙ каст)
+-- 🚀 КАСТ: DESTROYER SERVER
 -- ============================================================================
-local function kill_101_AntiRollbackHPGuard(obj)
-    local hum = obj:FindFirstChildOfClass("Humanoid"); if not hum then return end
+
+local function m_10(obj) claimFE(obj); local r=getRootPart(obj); if not r then return end; pcall(function() r.AssemblyAngularVelocity=Vector3.new(1e6,1e6,1e6) end) end
+registerMethod(10, "DestroyerServer", "10. Angular Spin 1e6", "Центрифуга AssemblyAngular", m_10, false)
+
+local function m_29(obj) claimFE(obj); local r=getRootPart(obj); if not r then return end; pcall(function() r.CanCollide=false; r.CFrame=r.CFrame+Vector3.new(0,50,0); r.AssemblyLinearVelocity=Vector3.new(1e9,1e9,-1e9) end) end
+registerMethod(29, "DestroyerServer", "29. Supersonic Launch 1e9", "Отстрел с 10^9 скоростью", m_29, false)
+
+local function m_41(obj) claimFE(obj); for _,v in ipairs(obj:GetDescendants()) do if v:IsA("Motor6D") or v:IsA("Weld") then pcall(function() v.C0=CFrame.new(0,-5000,0); v.C1=CFrame.new(10000,10000,10000) end) end end end
+registerMethod(41, "DestroyerServer", "41. Motor CFrame Crush", "C0/C1 гигантские смещения", m_41, false)
+
+-- Anti-rollback helper
+local function antiRollback(obj)
+    local h=obj:FindFirstChildOfClass("Humanoid"); if not h then return end
     if rollbackGuards[obj] then rollbackGuards[obj]:Disconnect() end
-    local lastHP = hum.Health
-    rollbackGuards[obj] = hum:GetPropertyChangedSignal("Health"):Connect(function()
-        local currentHP = hum.Health
-        if currentHP > lastHP + 5 then pcall(function() hum.Health = math.max(0, lastHP - 100) end)
-        else lastHP = currentHP end
-    end)
-    task.delay(30, function() if rollbackGuards[obj] then rollbackGuards[obj]:Disconnect(); rollbackGuards[obj]=nil end end)
+    local lastHP=h.Health
+    rollbackGuards[obj]=h:GetPropertyChangedSignal("Health"):Connect(function() local cur=h.Health; if cur>lastHP+5 then pcall(function() h.Health=math.max(0,lastHP-100) end) else lastHP=cur end end)
+    task.delay(30,function() if rollbackGuards[obj] then rollbackGuards[obj]:Disconnect(); rollbackGuards[obj]=nil end end)
 end
 
 -- ============================================================================
--- 💥 МАСТЕР-ДВИЖОК v37 (с распределением по 6+1 КАСТАМ)
+-- 💥 МАСТЕР-ДВИЖОК v38 (учитывает индивидуальные тумблеры методов!)
 -- ============================================================================
 local function MASTER_OMNI_KILL_ENGINE(obj)
     if not obj or not obj.Parent then return end
     claimFE(obj)
-    print("[💥 MASTER v37] Атака:", obj.Name)
+    print("[💥 MASTER v38] Атака:", obj.Name)
+    task.spawn(function() antiRollback(obj) end)
+
     local ticksCount = CombatSettings.HyperSpeed and 15 or 30
     local waitTime = CombatSettings.HyperSpeed and 0.01 or 0.03
-
-    -- Anti-rollback запускаем всегда (защита от отката HP боссом)
-    task.spawn(function() kill_101_AntiRollbackHPGuard(obj) end)
 
     task.spawn(function()
         for tick = 1, ticksCount do
             if not obj or not obj.Parent then break end
-
-            -- 👑 GOLDEN GRAIL: настраиваемый TakeDamage + новый Wave Stacking
-            if CombatSettings.GoldenGrail then
-                kill_86_GoldenGrailOverdrive(obj)
-                if tick == 1 or tick == 15 then kill_141_GrailWaveStacking(obj) end
+            -- Проходим по всем методам, проверяя КАСТ и ИНДИВИДУАЛЬНЫЙ тумблер
+            for _, method in ipairs(MethodRegistry) do
+                if CastEnabled[method.cast] and MethodEnabled[method.id] then
+                    -- Некоторые методы тяжёлые → запускать реже
+                    local heavy = (method.id == 128 or method.id == 149 or method.id == 155 or method.id == 145 or method.id == 105)
+                    if not heavy or tick == 1 or tick % 8 == 0 then
+                        pcall(function() method.fn(obj) end)
+                    end
+                end
             end
-
-            -- 📡 REMOTES + WEAPONS + TOUCH + новые Fuzzing/Hitbox/BossID/ServerSync
-            if CombatSettings.RemotesWeapons and tick % 2 == 0 then
-                kill_18_SafeRemoteBruteForce(obj); kill_17_OfficialWeaponOverdrive(obj); kill_19_WeaponRemoteHijack(obj)
-                kill_37_MatrixWeaponTouch(obj); kill_43_TouchInterestMatrixFlood(obj); kill_88_MultiNodeTouch(obj)
-                kill_20_BindableSignalTrigger(obj); kill_21_AttributeTagExecution(obj); kill_25_DisarmBossHitboxes(obj)
-                kill_106_BossIDDamageRouter(obj); kill_134_TouchedEventBomb(obj)
-                if tick == 2 then kill_139_RemoteParameterFuzzing(obj); kill_145_ToolHandleHitboxMorph(obj); kill_105_ServerFrameSyncDamage(obj) end
-            end
-
-            -- 🦾 CUSTOM RIGS: кости, констрейнты, аниматоры + новые CFrame/Attachment/BodyForce/SkinnedMesh/CtrlManager
-            if CombatSettings.CustomRigs and tick % 2 == 0 then
-                kill_7_CustomConstraintShatter(obj); kill_8_SkinnedMeshBoneShatter(obj); kill_9_KineticBodyTear(obj)
-                kill_94_AnimationLock(obj); kill_95_RootPriorityZero(obj); kill_124_VelocityShredder(obj)
-                kill_127_CFrameLoopCrusher(obj); kill_130_AttachmentOrbitChaos(obj); kill_133_BodyForceInfinitePush(obj)
-                if tick == 2 then kill_128_AnimationTrackOverload(obj); kill_140_SkinnedMeshAnnihilate(obj); kill_144_ControllerManagerHijack(obj) end
-            end
-
-            -- 🩸 FE CLASSIC: HP=0, ragdoll, суставы + новые StateFlood/Decapitate/RagdollSuf/HipCrash/JointOsc/DeathSignal
-            if CombatSettings.FEClassic and tick % 3 == 0 then
-                kill_1_SimpleHP(obj); kill_2_RagdollStateDead(obj); kill_3_BreakJointsMotorsLoop(obj); kill_5_DecapitateHeadTorso(obj); kill_6_SafePulseExplosion(obj)
-                kill_117_HumanoidStateFlood(obj); kill_121_RootHeadDecapitate(obj); kill_123_RagdollSuffocation(obj); kill_90_HipHeightCrash(obj)
-                kill_137_JointVelocityOscillate(obj); kill_146_CustomDeathSignalFire(obj)
-            end
-
-            -- 📊 MATH STATS: NaN, 1e308, negative + новые Regen/Defense
-            if CombatSettings.MathStats and tick % 3 == 0 then
-                kill_4_ValueAttrZero(obj); kill_11_TakeDamageLoop(obj); kill_12_NaNCrash(obj); kill_13_DoubleOverflow(obj)
-                kill_14_NegativeHP(obj); kill_15_StripShields(obj); kill_16_MaxHealthShrink(obj); kill_91_ShieldVaporizer(obj)
-                kill_118_HealthClampOverride(obj); kill_122_MassiveTakeDamage(obj); kill_136_ChildrenCascadePurge(obj)
-                kill_138_HealthRegenInversion(obj); kill_143_DefenseAttributeHijack(obj)
-            end
-
-            -- 🎮 PLAYER INPUT SIM: VIM, tool, proximity (новый каст)
-            if CombatSettings.PlayerInputSim and tick % 4 == 0 then
-                kill_97_VirtualInputClickStorm(obj); kill_100_MobileTouchEmulator(obj); kill_99_AbilityKeyPresser(obj)
-                kill_104_CameraAimLockFire(obj); kill_98_ToolActivateLegit(obj); kill_142_ProximityPromptAbuse(obj)
-                if tick == 4 then kill_103_InventoryAutoEquip(obj) end
-            end
-
-            -- 🚀 DESTROYER SERVER (полёт в космос)
-            if CombatSettings.DestroyerServer and tick == 1 then
-                task.spawn(function() kill_10_AngularSpin(obj); kill_29_SupersonicLaunch(obj); kill_41_MotorCFrameCrush(obj) end)
-            end
-
             task.wait(waitTime)
         end
     end)
 end
 
 -- ============================================================================
--- 🔥 NUCLEAR ENGINE — ЗАПУСКАЕТ ВООБЩЕ ВСЕ МЕТОДЫ БЕЗ УЧЁТА НАСТРОЕК
+-- 🔥 NUCLEAR — ВСЕ МЕТОДЫ БЕЗ УЧЁТА НАСТРОЕК
 -- ============================================================================
 local function NUCLEAR_KILL_ENGINE(obj)
     if not obj or not obj.Parent then return end
     claimFE(obj)
-    print("[🔥🔥🔥 NUCLEAR KILL 🔥🔥🔥] ПОЛНЫЙ АРСЕНАЛ ПО:", obj.Name)
-
-    -- Anti-rollback
-    task.spawn(function() kill_101_AntiRollbackHPGuard(obj) end)
-
-    -- Все методы разом в параллельных потоках
-    local allMethods = {
-        kill_1_SimpleHP, kill_2_RagdollStateDead, kill_3_BreakJointsMotorsLoop, kill_5_DecapitateHeadTorso, kill_6_SafePulseExplosion,
-        kill_7_CustomConstraintShatter, kill_8_SkinnedMeshBoneShatter, kill_9_KineticBodyTear,
-        kill_11_TakeDamageLoop, kill_12_NaNCrash, kill_13_DoubleOverflow, kill_14_NegativeHP, kill_15_StripShields, kill_16_MaxHealthShrink,
-        kill_17_OfficialWeaponOverdrive, kill_18_SafeRemoteBruteForce, kill_19_WeaponRemoteHijack, kill_20_BindableSignalTrigger,
-        kill_21_AttributeTagExecution, kill_25_DisarmBossHitboxes, kill_37_MatrixWeaponTouch, kill_43_TouchInterestMatrixFlood,
-        kill_86_GoldenGrailOverdrive, kill_88_MultiNodeTouch, kill_90_HipHeightCrash, kill_91_ShieldVaporizer, kill_94_AnimationLock, kill_95_RootPriorityZero,
-        kill_97_VirtualInputClickStorm, kill_98_ToolActivateLegit, kill_99_AbilityKeyPresser, kill_100_MobileTouchEmulator,
-        kill_103_InventoryAutoEquip, kill_104_CameraAimLockFire, kill_105_ServerFrameSyncDamage, kill_106_BossIDDamageRouter,
-        kill_117_HumanoidStateFlood, kill_118_HealthClampOverride, kill_121_RootHeadDecapitate, kill_122_MassiveTakeDamage,
-        kill_123_RagdollSuffocation, kill_124_VelocityShredder, kill_127_CFrameLoopCrusher, kill_128_AnimationTrackOverload,
-        kill_130_AttachmentOrbitChaos, kill_133_BodyForceInfinitePush, kill_134_TouchedEventBomb, kill_136_ChildrenCascadePurge,
-        kill_137_JointVelocityOscillate, kill_138_HealthRegenInversion, kill_139_RemoteParameterFuzzing, kill_140_SkinnedMeshAnnihilate,
-        kill_141_GrailWaveStacking, kill_142_ProximityPromptAbuse, kill_143_DefenseAttributeHijack, kill_144_ControllerManagerHijack,
-        kill_145_ToolHandleHitboxMorph, kill_146_CustomDeathSignalFire,
-        -- Destroyer тоже включаем в Nuclear
-        kill_10_AngularSpin, kill_29_SupersonicLaunch, kill_41_MotorCFrameCrush
-    }
-
+    print("[🔥🔥🔥 NUCLEAR] Все", #MethodRegistry, "методов по:", obj.Name)
+    task.spawn(function() antiRollback(obj) end)
     task.spawn(function()
-        -- 3 волны по всем методам с задержкой
-        for wave = 1, 3 do
-            if not obj or not obj.Parent then break end
-            print("[🔥 NUCLEAR WAVE", wave, "/ 3]")
-            for _, fn in ipairs(allMethods) do
-                task.spawn(function() pcall(function() fn(obj) end) end)
+        for wave=1,3 do
+            if not obj.Parent then break end
+            print("[🔥 WAVE", wave, "/3]")
+            for _, method in ipairs(MethodRegistry) do
+                task.spawn(function() pcall(function() method.fn(obj) end) end)
             end
             task.wait(0.5)
         end
     end)
 end
 
--- ==================== ГРАФИЧЕСКИЙ ИНТЕРФЕЙС v37 ====================
+-- ============================================================================
+-- 🎨 GUI v38 — БОЛЬШИЕ ПАНЕЛИ + РАСКРЫВАЮЩИЕСЯ КАСТЫ
+-- ============================================================================
 local sg = Instance.new("ScreenGui")
-sg.Name = "NPCKillTesterPro_v37_GUI"
+sg.Name = "NPCKillTesterPro_v38_GUI"
 sg.ResetOnSpawn = false
 pcall(function() sg.Parent = game:GetService("CoreGui") end)
 if not sg.Parent then sg.Parent = lp:WaitForChild("PlayerGui") end
 
 local mf = Instance.new("Frame", sg)
-mf.Size = UDim2.new(0, 780, 0, 880)
-mf.Position = UDim2.new(0.5, -390, 0.5, -440)
+mf.Size = UDim2.new(0, 820, 0, 920)
+mf.Position = UDim2.new(0.5, -410, 0.5, -460)
 mf.BackgroundColor3 = Color3.fromRGB(16,16,20)
 mf.BorderSizePixel = 0
-mf.Active = true
-mf.Draggable = true
+mf.Active = true; mf.Draggable = true
 Instance.new("UICorner", mf).CornerRadius = UDim.new(0,14)
 
 local title = Instance.new("TextLabel", mf)
 title.Size = UDim2.new(1, -80, 0, 38)
-title.Text = "  👑 NPC KILL v37.0 — ORIGINAL 6 CASTS + NUCLEAR + ANTI-KICK PRO (5 LAYERS)"
-title.TextColor3 = Color3.fromRGB(255,255,255); title.Font = Enum.Font.GothamBold; title.TextSize = 11
+title.Text = "  👑 NPC KILL v38.0 — EXPANDABLE CASTS + SUB-METHOD TOGGLES"
+title.TextColor3 = Color3.fromRGB(255,255,255); title.Font = Enum.Font.GothamBold; title.TextSize = 12
 title.TextXAlignment = Enum.TextXAlignment.Left; title.BackgroundColor3 = Color3.fromRGB(10,10,12)
 Instance.new("UICorner", title).CornerRadius = UDim.new(0,14)
 
-local minBtn = Instance.new("TextButton", mf)
-minBtn.Size = UDim2.new(0, 36, 0, 36); minBtn.Position = UDim2.new(1, -74, 0, 1)
-minBtn.Text = "-"; minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 20
-minBtn.TextColor3 = Color3.fromRGB(255,255,255); minBtn.BackgroundColor3 = Color3.fromRGB(35,35,45)
+local minBtn = Instance.new("TextButton", mf); minBtn.Size = UDim2.new(0,36,0,36); minBtn.Position = UDim2.new(1,-74,0,1)
+minBtn.Text = "-"; minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 20; minBtn.TextColor3 = Color3.fromRGB(255,255,255); minBtn.BackgroundColor3 = Color3.fromRGB(35,35,45)
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,10)
 
-local unloadBtn = Instance.new("TextButton", mf)
-unloadBtn.Size = UDim2.new(0, 36, 0, 36); unloadBtn.Position = UDim2.new(1, -37, 0, 1)
-unloadBtn.Text = "X"; unloadBtn.Font = Enum.Font.GothamBold; unloadBtn.TextSize = 16
-unloadBtn.TextColor3 = Color3.fromRGB(255,180,180); unloadBtn.BackgroundColor3 = Color3.fromRGB(90,25,25)
+local unloadBtn = Instance.new("TextButton", mf); unloadBtn.Size = UDim2.new(0,36,0,36); unloadBtn.Position = UDim2.new(1,-37,0,1)
+unloadBtn.Text = "X"; unloadBtn.Font = Enum.Font.GothamBold; unloadBtn.TextSize = 16; unloadBtn.TextColor3 = Color3.fromRGB(255,180,180); unloadBtn.BackgroundColor3 = Color3.fromRGB(90,25,25)
 Instance.new("UICorner", unloadBtn).CornerRadius = UDim.new(0,10)
 
 local minimized = false
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
-        mf:TweenSize(UDim2.new(0,780,0,38), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true); minBtn.Text = "+"
+        mf:TweenSize(UDim2.new(0,820,0,38), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true); minBtn.Text = "+"
         for _,v in ipairs(mf:GetChildren()) do if v:IsA("GuiObject") and v~=title and v~=minBtn and v~=unloadBtn then v.Visible=false end end
     else
-        mf:TweenSize(UDim2.new(0,780,0,880), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true); minBtn.Text = "-"
+        mf:TweenSize(UDim2.new(0,820,0,920), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true); minBtn.Text = "-"
         for _,v in ipairs(mf:GetChildren()) do if v:IsA("GuiObject") and v~=title and v~=minBtn and v~=unloadBtn then v.Visible=true end end
     end
 end)
 
--- 🔥 СЕКЦИЯ ТРЁХ ГЛАВНЫХ КНОПОК (MASTER OMNI + KILL ALL + NUCLEAR)
+-- 🎯 СЕКЦИЯ 3 ГЛАВНЫХ КНОПОК
 local actionSection = Instance.new("Frame", mf)
-actionSection.Size = UDim2.new(1, -20, 0, 92)
-actionSection.Position = UDim2.new(0, 10, 0, 42)
+actionSection.Size = UDim2.new(1, -20, 0, 92); actionSection.Position = UDim2.new(0, 10, 0, 42)
 actionSection.BackgroundColor3 = Color3.fromRGB(24,24,30)
 Instance.new("UICorner", actionSection).CornerRadius = UDim.new(0,10)
 
 local masterBtn = Instance.new("TextButton", actionSection)
 masterBtn.Size = UDim2.new(0.31, -4, 0, 80); masterBtn.Position = UDim2.new(0, 8, 0, 6)
-masterBtn.Text = "💥 MASTER\nOMNI-KILL\n(по настройкам)"
+masterBtn.Text = "💥 MASTER\nOMNI-KILL\n(по настройкам ↓)"
 masterBtn.Font = Enum.Font.GothamBold; masterBtn.TextSize = 12; masterBtn.TextColor3 = Color3.fromRGB(255,255,255); masterBtn.BackgroundColor3 = Color3.fromRGB(10,140,60)
 Instance.new("UICorner", masterBtn).CornerRadius = UDim.new(0,8)
 masterBtn.MouseButton1Click:Connect(function()
@@ -1299,7 +1135,7 @@ end)
 
 local masterKillAll = Instance.new("TextButton", actionSection)
 masterKillAll.Size = UDim2.new(0.31, -4, 0, 80); masterKillAll.Position = UDim2.new(0.33, 0, 0, 6)
-masterKillAll.Text = "⚡ MASTER\nKILL ALL\n(все NPC — по настройкам)"
+masterKillAll.Text = "⚡ MASTER\nKILL ALL\n(все NPC — по настр.)"
 masterKillAll.Font = Enum.Font.GothamBold; masterKillAll.TextSize = 12; masterKillAll.TextColor3 = Color3.fromRGB(255,255,0); masterKillAll.BackgroundColor3 = Color3.fromRGB(160,30,0)
 Instance.new("UICorner", masterKillAll).CornerRadius = UDim.new(0,8)
 masterKillAll.MouseButton1Click:Connect(function()
@@ -1309,78 +1145,194 @@ masterKillAll.MouseButton1Click:Connect(function()
     end)
 end)
 
--- 🔥 NUCLEAR KILL — все методы разом БЕЗ настроек
 local nuclearBtn = Instance.new("TextButton", actionSection)
 nuclearBtn.Size = UDim2.new(0.34, -4, 0, 80); nuclearBtn.Position = UDim2.new(0.66, 0, 0, 6)
-nuclearBtn.Text = "🔥 NUCLEAR KILL 🔥\nВСЕ 60+ МЕТОДОВ РАЗОМ!\n(игнорирует настройки)"
+nuclearBtn.Text = "🔥 NUCLEAR KILL 🔥\nВСЕ "..#MethodRegistry.." МЕТОДОВ РАЗОМ\n(игнорирует настройки)"
 nuclearBtn.Font = Enum.Font.GothamBold; nuclearBtn.TextSize = 12; nuclearBtn.TextColor3 = Color3.fromRGB(255,255,255); nuclearBtn.BackgroundColor3 = Color3.fromRGB(200,20,20)
 Instance.new("UICorner", nuclearBtn).CornerRadius = UDim.new(0,8)
 nuclearBtn.MouseButton1Click:Connect(function()
     local targets = getTargets()
-    if #targets == 0 then
-        print("[🔥 NUCLEAR] Цель не выбрана → атакуем ВСЕХ NPC!")
-        targets = getAllValidEntities()
-    end
-    print("[🔥🔥🔥 NUCLEAR KILL] Запуск по", #targets, "целей!")
+    if #targets == 0 then targets = getAllValidEntities() end
+    print("[🔥 NUCLEAR] Атака по", #targets, "целей!")
     for _,obj in ipairs(targets) do task.spawn(function() NUCLEAR_KILL_ENGINE(obj) end) end
 end)
 
--- ⚙️ ПАНЕЛЬ НАСТРОЕК (ОРИГИНАЛЬНАЯ v32 — 6 кастов + 1 новый + регулировки + Anti-Kick)
+-- ⚙️ БОЛЬШАЯ ПАНЕЛЬ НАСТРОЕК С РАСКРЫВАЮЩИМИСЯ КАСТАМИ + ПРОКРУТКА
 local settingsSection = Instance.new("Frame", mf)
-settingsSection.Size = UDim2.new(1, -20, 0, 158)
+settingsSection.Size = UDim2.new(1, -20, 0, 260)
 settingsSection.Position = UDim2.new(0, 10, 0, 140)
 settingsSection.BackgroundColor3 = Color3.fromRGB(20,20,28)
 Instance.new("UICorner", settingsSection).CornerRadius = UDim.new(0,10)
 
 local stTitle = Instance.new("TextLabel", settingsSection)
-stTitle.Size = UDim2.new(1, 0, 0, 20)
-stTitle.Text = "  ⚙️ ПАНЕЛЬ НАСТРОЕК (6 ОРИГИНАЛЬНЫХ КАСТОВ + 1 НОВЫЙ + Anti-Kick PRO):"
+stTitle.Size = UDim2.new(1, 0, 0, 22)
+stTitle.Text = "  ⚙️ НАСТРОЙКИ — КЛИКНИ НА КАСТ ЧТОБЫ РАСКРЫТЬ ПОДМЕНЮ МЕТОДОВ ▼"
 stTitle.Font = Enum.Font.GothamBold; stTitle.TextSize = 11; stTitle.TextColor3 = Color3.fromRGB(150,255,255)
 stTitle.TextXAlignment = Enum.TextXAlignment.Left; stTitle.BackgroundTransparency = 1
 
-local stGridF = Instance.new("Frame", settingsSection)
-stGridF.Size = UDim2.new(1, -10, 1, -22); stGridF.Position = UDim2.new(0, 5, 0, 22)
-stGridF.BackgroundTransparency = 1
+local settingsScroll = Instance.new("ScrollingFrame", settingsSection)
+settingsScroll.Size = UDim2.new(1, -10, 1, -26); settingsScroll.Position = UDim2.new(0, 5, 0, 24)
+settingsScroll.BackgroundTransparency = 1; settingsScroll.ScrollBarThickness = 6
+settingsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+settingsScroll.CanvasSize = UDim2.new(0,0,0,0)
 
-local stGrid = Instance.new("UIGridLayout", stGridF)
-stGrid.CellSize = UDim2.new(0, 248, 0, 30); stGrid.CellPadding = UDim2.new(0, 5, 0, 4)
+local settingsList = Instance.new("UIListLayout", settingsScroll)
+settingsList.Padding = UDim.new(0, 3); settingsList.SortOrder = Enum.SortOrder.LayoutOrder
 
-local function makeSetToggle(text, key, col, defaultVal, callback)
-    local state = defaultVal
-    local b = Instance.new("TextButton", stGridF)
-    b.Text = text .. (state and " [ON]" or " [OFF]")
-    b.BackgroundColor3 = state and col or Color3.fromRGB(45,45,55)
-    b.Font = Enum.Font.GothamBold; b.TextSize = 10; b.TextColor3 = Color3.fromRGB(255,255,255)
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
-    b.MouseButton1Click:Connect(function()
-        state = not state
-        if key then CombatSettings[key] = state end
-        b.Text = text .. (state and " [ON]" or " [OFF]")
-        b.BackgroundColor3 = state and col or Color3.fromRGB(45,45,55)
-        if callback then callback(state) end
-        print("[⚙️]", text, "=", state)
+-- Цвета и иконки для кастов
+local CastInfo = {
+    {key="GoldenGrail",    icon="👑", label="Золотой Грааль (TakeDamage DPS)", color=Color3.fromRGB(180,140,0)},
+    {key="RemotesWeapons", icon="📡", label="Ремоуты / Оружие / Тач",         color=Color3.fromRGB(0,100,160)},
+    {key="CustomRigs",     icon="🦾", label="Кастомные Тела / Кости",          color=Color3.fromRGB(160,80,0)},
+    {key="FEClassic",      icon="🩸", label="Классика FE + Суставы",           color=Color3.fromRGB(120,40,40)},
+    {key="MathStats",      icon="📊", label="Краш Математики",                  color=Color3.fromRGB(100,20,100)},
+    {key="PlayerInputSim", icon="🎮", label="Player Input Sim (Tool/Keys/PP)",  color=Color3.fromRGB(0,140,140)},
+    {key="DestroyerServer",icon="🚀", label="Destroyer Server (Космос)",       color=Color3.fromRGB(180,20,0)},
+}
+
+-- Функция создания раскрывающегося каста
+local function createExpandableCast(info, order)
+    local container = Instance.new("Frame", settingsScroll)
+    container.Size = UDim2.new(1, -12, 0, 32)
+    container.BackgroundTransparency = 1
+    container.LayoutOrder = order
+    container.AutomaticSize = Enum.AutomaticSize.Y
+
+    -- Заголовок каста (клик для раскрытия)
+    local header = Instance.new("TextButton", container)
+    header.Size = UDim2.new(1, 0, 0, 32)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.Text = ""
+    header.BackgroundColor3 = CastEnabled[info.key] and info.color or Color3.fromRGB(45,45,55)
+    header.AutoButtonColor = false
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 6)
+
+    -- Стрелка раскрытия
+    local arrow = Instance.new("TextLabel", header)
+    arrow.Size = UDim2.new(0, 30, 1, 0); arrow.Position = UDim2.new(0, 5, 0, 0)
+    arrow.Text = "▶"; arrow.Font = Enum.Font.GothamBold; arrow.TextSize = 14
+    arrow.TextColor3 = Color3.fromRGB(255,255,255); arrow.BackgroundTransparency = 1
+
+    -- Название каста
+    local castLabel = Instance.new("TextLabel", header)
+    castLabel.Size = UDim2.new(1, -180, 1, 0); castLabel.Position = UDim2.new(0, 35, 0, 0)
+    castLabel.Text = info.icon .. "  " .. info.label
+    castLabel.Font = Enum.Font.GothamBold; castLabel.TextSize = 12
+    castLabel.TextColor3 = Color3.fromRGB(255,255,255); castLabel.BackgroundTransparency = 1
+    castLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Кнопка ON/OFF всего каста
+    local castToggle = Instance.new("TextButton", header)
+    castToggle.Size = UDim2.new(0, 90, 0, 22); castToggle.Position = UDim2.new(1, -100, 0, 5)
+    castToggle.Text = CastEnabled[info.key] and "CAST: ON" or "CAST: OFF"
+    castToggle.Font = Enum.Font.GothamBold; castToggle.TextSize = 10
+    castToggle.TextColor3 = Color3.fromRGB(255,255,255)
+    castToggle.BackgroundColor3 = CastEnabled[info.key] and Color3.fromRGB(40,120,40) or Color3.fromRGB(120,40,40)
+    Instance.new("UICorner", castToggle).CornerRadius = UDim.new(0, 4)
+    castToggle.MouseButton1Click:Connect(function()
+        CastEnabled[info.key] = not CastEnabled[info.key]
+        castToggle.Text = CastEnabled[info.key] and "CAST: ON" or "CAST: OFF"
+        castToggle.BackgroundColor3 = CastEnabled[info.key] and Color3.fromRGB(40,120,40) or Color3.fromRGB(120,40,40)
+        header.BackgroundColor3 = CastEnabled[info.key] and info.color or Color3.fromRGB(45,45,55)
+    end)
+
+    -- Подменю (изначально скрыто)
+    local submenu = Instance.new("Frame", container)
+    submenu.Size = UDim2.new(1, -20, 0, 0)
+    submenu.Position = UDim2.new(0, 20, 0, 36)
+    submenu.BackgroundColor3 = Color3.fromRGB(28,28,36)
+    submenu.Visible = false
+    submenu.AutomaticSize = Enum.AutomaticSize.Y
+    Instance.new("UICorner", submenu).CornerRadius = UDim.new(0, 6)
+
+    local submenuList = Instance.new("UIListLayout", submenu)
+    submenuList.Padding = UDim.new(0, 2); submenuList.SortOrder = Enum.SortOrder.LayoutOrder
+    local pad = Instance.new("UIPadding", submenu)
+    pad.PaddingLeft = UDim.new(0, 5); pad.PaddingRight = UDim.new(0, 5); pad.PaddingTop = UDim.new(0, 5); pad.PaddingBottom = UDim.new(0, 5)
+
+    -- Заполняем подменю всеми методами этого каста
+    for i, method in ipairs(MethodRegistry) do
+        if method.cast == info.key then
+            local mBtn = Instance.new("TextButton", submenu)
+            mBtn.Size = UDim2.new(1, -10, 0, 26)
+            mBtn.Text = ""
+            mBtn.BackgroundColor3 = MethodEnabled[method.id] and Color3.fromRGB(40,80,50) or Color3.fromRGB(50,40,40)
+            mBtn.AutoButtonColor = false
+            Instance.new("UICorner", mBtn).CornerRadius = UDim.new(0, 4)
+
+            local statusLbl = Instance.new("TextLabel", mBtn)
+            statusLbl.Size = UDim2.new(0, 30, 1, 0); statusLbl.Position = UDim2.new(0, 5, 0, 0)
+            statusLbl.Text = MethodEnabled[method.id] and "✅" or "❌"
+            statusLbl.Font = Enum.Font.GothamBold; statusLbl.TextSize = 12
+            statusLbl.TextColor3 = Color3.fromRGB(255,255,255); statusLbl.BackgroundTransparency = 1
+
+            local nameLbl = Instance.new("TextLabel", mBtn)
+            nameLbl.Size = UDim2.new(0.5, -40, 1, 0); nameLbl.Position = UDim2.new(0, 40, 0, 0)
+            nameLbl.Text = method.name
+            nameLbl.Font = Enum.Font.GothamBold; nameLbl.TextSize = 10
+            nameLbl.TextColor3 = Color3.fromRGB(255,255,255); nameLbl.BackgroundTransparency = 1
+            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local descLbl = Instance.new("TextLabel", mBtn)
+            descLbl.Size = UDim2.new(0.5, -50, 1, 0); descLbl.Position = UDim2.new(0.5, 0, 0, 0)
+            descLbl.Text = method.desc
+            descLbl.Font = Enum.Font.SourceSans; descLbl.TextSize = 10
+            descLbl.TextColor3 = Color3.fromRGB(200,200,220); descLbl.BackgroundTransparency = 1
+            descLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            mBtn.MouseButton1Click:Connect(function()
+                MethodEnabled[method.id] = not MethodEnabled[method.id]
+                statusLbl.Text = MethodEnabled[method.id] and "✅" or "❌"
+                mBtn.BackgroundColor3 = MethodEnabled[method.id] and Color3.fromRGB(40,80,50) or Color3.fromRGB(50,40,40)
+                print("[⚙️ SUB]", method.name, "=", MethodEnabled[method.id])
+            end)
+        end
+    end
+
+    -- Клик по header раскрывает/сворачивает подменю
+    header.MouseButton1Click:Connect(function()
+        submenu.Visible = not submenu.Visible
+        arrow.Text = submenu.Visible and "▼" or "▶"
     end)
 end
 
--- Оригинальные 6 кастов v32
-makeSetToggle("👑 Золотой Грааль #86", "GoldenGrail", Color3.fromRGB(180,140,0), true)
-makeSetToggle("📡 Ремоуты/Оружие/Тач", "RemotesWeapons", Color3.fromRGB(0,100,160), true)
-makeSetToggle("🦾 Кастомные Тела/Кости", "CustomRigs", Color3.fromRGB(160,80,0), true)
-makeSetToggle("🩸 Классика FE + Суставы", "FEClassic", Color3.fromRGB(120,40,40), true)
-makeSetToggle("📊 Краш Математики", "MathStats", Color3.fromRGB(100,20,100), true)
-makeSetToggle("🚀 Destroyer Server (Космос)", "DestroyerServer", Color3.fromRGB(180,20,0), false)
--- Новый каст (для методов ввода)
-makeSetToggle("🎮 Player Input Sim (VIM/Tool)", "PlayerInputSim", Color3.fromRGB(0,140,140), true)
--- Anti-Kick PRO как отдельный тумблер (не влияет на модули)
-makeSetToggle("🛡️ Anti-Kick PRO (5 слоёв)", nil, Color3.fromRGB(0,180,120), false, function(state) AntiKickPro:Toggle(state) end)
+-- Создаём все касты
+for i, info in ipairs(CastInfo) do
+    createExpandableCast(info, i)
+end
 
--- Регулировка урона
+-- 🛡️ Anti-Kick тумблер + регулировки (в отдельном месте — под скроллом)
+local extraSettings = Instance.new("Frame", mf)
+extraSettings.Size = UDim2.new(1, -20, 0, 40)
+extraSettings.Position = UDim2.new(0, 10, 0, 406)
+extraSettings.BackgroundColor3 = Color3.fromRGB(22,22,30)
+Instance.new("UICorner", extraSettings).CornerRadius = UDim.new(0,10)
+
+local extraGrid = Instance.new("UIGridLayout", extraSettings)
+extraGrid.CellSize = UDim2.new(0, 260, 0, 32); extraGrid.CellPadding = UDim2.new(0, 5, 0, 2)
+local extraPad = Instance.new("UIPadding", extraSettings)
+extraPad.PaddingLeft = UDim.new(0, 5); extraPad.PaddingTop = UDim.new(0, 4)
+
+local akBtn = Instance.new("TextButton", extraSettings)
+akBtn.Text = "🛡️ Anti-Kick PRO 5 слоёв [OFF]"
+akBtn.BackgroundColor3 = Color3.fromRGB(45,45,55); akBtn.Font = Enum.Font.GothamBold; akBtn.TextSize = 11
+akBtn.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", akBtn).CornerRadius = UDim.new(0,6)
+local akState = false
+akBtn.MouseButton1Click:Connect(function()
+    akState = not akState
+    AntiKickPro:Toggle(akState)
+    akBtn.Text = "🛡️ Anti-Kick PRO 5 слоёв " .. (akState and "[ON]" or "[OFF]")
+    akBtn.BackgroundColor3 = akState and Color3.fromRGB(0,180,120) or Color3.fromRGB(45,45,55)
+end)
+
 local dmgValues = { 5000, 50000, 500000, 999999, math.huge }
-local dmgNames = { "5,000", "50,000", "500,000", "999,999", "MAX (Inf)" }
+local dmgNames = { "5,000", "50,000", "500,000", "999,999", "MAX Inf" }
 local dmgIdx = 2
-local dmgBtn = Instance.new("TextButton", stGridF)
+local dmgBtn = Instance.new("TextButton", extraSettings)
 dmgBtn.Text = "⚙️ DPS Урон: " .. dmgNames[dmgIdx]
-dmgBtn.BackgroundColor3 = Color3.fromRGB(0,120,80); dmgBtn.Font = Enum.Font.GothamBold; dmgBtn.TextSize = 10; dmgBtn.TextColor3 = Color3.fromRGB(255,255,255)
+dmgBtn.BackgroundColor3 = Color3.fromRGB(0,120,80); dmgBtn.Font = Enum.Font.GothamBold; dmgBtn.TextSize = 11
+dmgBtn.TextColor3 = Color3.fromRGB(255,255,255)
 Instance.new("UICorner", dmgBtn).CornerRadius = UDim.new(0,6)
 dmgBtn.MouseButton1Click:Connect(function()
     dmgIdx = (dmgIdx % #dmgValues) + 1
@@ -1388,10 +1340,10 @@ dmgBtn.MouseButton1Click:Connect(function()
     dmgBtn.Text = "⚙️ DPS Урон: " .. dmgNames[dmgIdx]
 end)
 
--- Скорость
-local spdBtn = Instance.new("TextButton", stGridF)
+local spdBtn = Instance.new("TextButton", extraSettings)
 spdBtn.Text = "⚙️ Скорость: Normal (30x)"
-spdBtn.BackgroundColor3 = Color3.fromRGB(60,60,80); spdBtn.Font = Enum.Font.GothamBold; spdBtn.TextSize = 10; spdBtn.TextColor3 = Color3.fromRGB(255,255,255)
+spdBtn.BackgroundColor3 = Color3.fromRGB(60,60,80); spdBtn.Font = Enum.Font.GothamBold; spdBtn.TextSize = 11
+spdBtn.TextColor3 = Color3.fromRGB(255,255,255)
 Instance.new("UICorner", spdBtn).CornerRadius = UDim.new(0,6)
 spdBtn.MouseButton1Click:Connect(function()
     CombatSettings.HyperSpeed = not CombatSettings.HyperSpeed
@@ -1399,61 +1351,53 @@ spdBtn.MouseButton1Click:Connect(function()
     spdBtn.BackgroundColor3 = CombatSettings.HyperSpeed and Color3.fromRGB(120,40,160) or Color3.fromRGB(60,60,80)
 end)
 
--- 🧪 СЕКЦИЯ ТЕСТА 10 НОВЫХ МЕТОДОВ v37 (№137-№146)
+-- 🧪 БОЛЬШАЯ СЕКЦИЯ ТЕСТА (ВСЕ методы! с прокруткой)
 local testSection = Instance.new("Frame", mf)
-testSection.Size = UDim2.new(1, -20, 0, 115)
-testSection.Position = UDim2.new(0, 10, 0, 304)
+testSection.Size = UDim2.new(1, -20, 0, 155)
+testSection.Position = UDim2.new(0, 10, 0, 454)
 testSection.BackgroundColor3 = Color3.fromRGB(28,20,32)
 Instance.new("UICorner", testSection).CornerRadius = UDim.new(0,10)
 
 local tsTitle = Instance.new("TextLabel", testSection)
-tsTitle.Size = UDim2.new(1, 0, 0, 20)
-tsTitle.Text = "  🧪 10 НОВЫХ МЕТОДОВ v37 (№137-№146) — распределены по кастам ↑ | клик — тест отдельно:"
-tsTitle.Font = Enum.Font.GothamBold; tsTitle.TextSize = 10; tsTitle.TextColor3 = Color3.fromRGB(220,150,255)
+tsTitle.Size = UDim2.new(1, 0, 0, 22)
+tsTitle.Text = "  🧪 ТЕСТ ВСЕХ "..#MethodRegistry.." МЕТОДОВ (клик = запуск отдельно) — с прокруткой:"
+tsTitle.Font = Enum.Font.GothamBold; tsTitle.TextSize = 11; tsTitle.TextColor3 = Color3.fromRGB(220,150,255)
 tsTitle.TextXAlignment = Enum.TextXAlignment.Left; tsTitle.BackgroundTransparency = 1
 
 local tsGridF = Instance.new("ScrollingFrame", testSection)
-tsGridF.Size = UDim2.new(1, -10, 1, -22); tsGridF.Position = UDim2.new(0, 5, 0, 20)
-tsGridF.BackgroundTransparency = 1; tsGridF.ScrollBarThickness = 5
+tsGridF.Size = UDim2.new(1, -10, 1, -26); tsGridF.Position = UDim2.new(0, 5, 0, 24)
+tsGridF.BackgroundTransparency = 1; tsGridF.ScrollBarThickness = 6
 tsGridF.AutomaticCanvasSize = Enum.AutomaticSize.Y; tsGridF.CanvasSize = UDim2.new(0,0,0,0)
 
 local tsGrid = Instance.new("UIGridLayout", tsGridF)
-tsGrid.CellSize = UDim2.new(0, 248, 0, 34); tsGrid.CellPadding = UDim2.new(0, 5, 0, 4)
+tsGrid.CellSize = UDim2.new(0, 258, 0, 34); tsGrid.CellPadding = UDim2.new(0, 5, 0, 4)
 
-local function makeTestBtn(text, desc, col, fn)
+for _, method in ipairs(MethodRegistry) do
     local b = Instance.new("TextButton", tsGridF)
-    b.Text = ""; b.BackgroundColor3 = col; b.BorderSizePixel = 0
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    b.Text = ""; b.BackgroundColor3 = Color3.fromRGB(35,35,45); b.BorderSizePixel = 0
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,5)
+    local castInfo
+    for _,c in ipairs(CastInfo) do if c.key == method.cast then castInfo = c; break end end
+    if castInfo then b.BackgroundColor3 = castInfo.color end
     local t1 = Instance.new("TextLabel", b)
-    t1.Size = UDim2.new(1,-8,0,15); t1.Position = UDim2.new(0,4,0,1); t1.Text = text
+    t1.Size = UDim2.new(1,-8,0,16); t1.Position = UDim2.new(0,4,0,1); t1.Text = method.name
     t1.Font = Enum.Font.GothamBold; t1.TextSize = 11; t1.TextColor3 = Color3.fromRGB(255,255,255); t1.BackgroundTransparency = 1
     t1.TextXAlignment = Enum.TextXAlignment.Left
     local t2 = Instance.new("TextLabel", b)
-    t2.Size = UDim2.new(1,-8,0,15); t2.Position = UDim2.new(0,4,0,17); t2.Text = desc
-    t2.Font = Enum.Font.SourceSans; t2.TextSize = 10; t2.TextColor3 = Color3.fromRGB(210,210,210); t2.BackgroundTransparency = 1
+    t2.Size = UDim2.new(1,-8,0,15); t2.Position = UDim2.new(0,4,0,17); t2.Text = method.desc
+    t2.Font = Enum.Font.SourceSans; t2.TextSize = 10; t2.TextColor3 = Color3.fromRGB(230,230,240); t2.BackgroundTransparency = 1
     t2.TextXAlignment = Enum.TextXAlignment.Left
     b.MouseButton1Click:Connect(function()
         local targets = getTargets(); if #targets == 0 then print("[WARN] Выберите цель!"); return end
-        for _,obj in ipairs(targets) do task.spawn(function() fn(obj) end) end
+        print("[TEST]", method.name)
+        for _,obj in ipairs(targets) do task.spawn(function() pcall(function() method.fn(obj) end) end) end
     end)
 end
 
--- Каждая кнопка с меткой каста в описании
-makeTestBtn("137. 🩸 Joint Osc.", "→FE: колебания Motor6D DesiredAngle", Color3.fromRGB(120,40,40), kill_137_JointVelocityOscillate)
-makeTestBtn("138. 📊 Regen Invert", "→MathStats: HealthRegen = -1e6", Color3.fromRGB(100,20,100), kill_138_HealthRegenInversion)
-makeTestBtn("139. 📡 Remote Fuzz", "→Remotes: 20 форматов аргументов", Color3.fromRGB(0,100,160), kill_139_RemoteParameterFuzzing)
-makeTestBtn("140. 🦾 Skinned Mesh", "→Rigs: атака LayeredClothing/Bones", Color3.fromRGB(160,80,0), kill_140_SkinnedMeshAnnihilate)
-makeTestBtn("141. 👑 Grail Waves", "→Grail: 10 нарастающих волн урона", Color3.fromRGB(180,140,0), kill_141_GrailWaveStacking)
-makeTestBtn("142. 🎮 Proximity PP", "→InputSim: триггер всех PP на боссе", Color3.fromRGB(0,140,140), kill_142_ProximityPromptAbuse)
-makeTestBtn("143. 📊 Defense Hijack", "→MathStats: Armor=0, DmgMulti=1000", Color3.fromRGB(100,20,100), kill_143_DefenseAttributeHijack)
-makeTestBtn("144. 🦾 CtrlManager", "→Rigs: ControllerManager Speed=0", Color3.fromRGB(160,80,0), kill_144_ControllerManagerHijack)
-makeTestBtn("145. 📡 Handle Morph", "→Remotes: растянуть Handle до NPC", Color3.fromRGB(0,100,160), kill_145_ToolHandleHitboxMorph)
-makeTestBtn("146. 🩸 Death Signal", "→FE: файрим все Died/OnDeath", Color3.fromRGB(120,40,40), kill_146_CustomDeathSignalFire)
-
--- 📋 СЕКЦИЯ ТАБЛИЦЫ NPC (нижняя часть)
+-- 📋 ТАБЛИЦА NPC (низ)
 local listSection = Instance.new("Frame", mf)
-listSection.Size = UDim2.new(1, -20, 0, 445)
-listSection.Position = UDim2.new(0, 10, 0, 424)
+listSection.Size = UDim2.new(1, -20, 0, 305)
+listSection.Position = UDim2.new(0, 10, 0, 614)
 listSection.BackgroundColor3 = Color3.fromRGB(20,20,26)
 Instance.new("UICorner", listSection).CornerRadius = UDim.new(0,10)
 
@@ -1467,33 +1411,33 @@ local function makeColLabel(parent, text, pos, size, col)
     return l
 end
 
-makeColLabel(lsHeader, "  ИМЯ (СКАНЕР)", UDim2.new(0,0,0,0), UDim2.new(0.38,0,1,0), Color3.fromRGB(255,255,150))
+makeColLabel(lsHeader, "  ИМЯ", UDim2.new(0,0,0,0), UDim2.new(0.38,0,1,0), Color3.fromRGB(255,255,150))
 makeColLabel(lsHeader, "ТИП", UDim2.new(0.39,0,0,0), UDim2.new(0.26,0,1,0), Color3.fromRGB(150,220,255))
-makeColLabel(lsHeader, "ЗДОРОВЬЕ", UDim2.new(0.66,0,0,0), UDim2.new(0.18,0,1,0), Color3.fromRGB(150,255,150))
-makeColLabel(lsHeader, "ВЛАДЕНИЕ", UDim2.new(0.85,0,0,0), UDim2.new(0.14,0,1,0), Color3.fromRGB(255,180,255))
+makeColLabel(lsHeader, "HP", UDim2.new(0.66,0,0,0), UDim2.new(0.18,0,1,0), Color3.fromRGB(150,255,150))
+makeColLabel(lsHeader, "OWNER", UDim2.new(0.85,0,0,0), UDim2.new(0.14,0,1,0), Color3.fromRGB(255,180,255))
 
 local selAllBtn = Instance.new("TextButton", lsHeader)
-selAllBtn.Size = UDim2.new(0, 80, 0, 22); selAllBtn.Position = UDim2.new(1, -170, 0, 5)
+selAllBtn.Size = UDim2.new(0,80,0,22); selAllBtn.Position = UDim2.new(1,-170,0,5)
 selAllBtn.Text = "✅ Все"; selAllBtn.Font = Enum.Font.SourceSansBold; selAllBtn.TextSize = 11
 selAllBtn.BackgroundColor3 = Color3.fromRGB(40,90,40); selAllBtn.TextColor3 = Color3.fromRGB(255,255,255)
 Instance.new("UICorner", selAllBtn).CornerRadius = UDim.new(0,4)
 
 local deselBtn = Instance.new("TextButton", lsHeader)
-deselBtn.Size = UDim2.new(0, 80, 0, 22); deselBtn.Position = UDim2.new(1, -85, 0, 5)
+deselBtn.Size = UDim2.new(0,80,0,22); deselBtn.Position = UDim2.new(1,-85,0,5)
 deselBtn.Text = "❌ Сброс"; deselBtn.Font = Enum.Font.SourceSansBold; deselBtn.TextSize = 11
 deselBtn.BackgroundColor3 = Color3.fromRGB(90,40,40); deselBtn.TextColor3 = Color3.fromRGB(255,255,255)
 Instance.new("UICorner", deselBtn).CornerRadius = UDim.new(0,4)
 
 local npcS = Instance.new("ScrollingFrame", listSection)
-npcS.Size = UDim2.new(1, -10, 1, -40); npcS.Position = UDim2.new(0, 5, 0, 36)
+npcS.Size = UDim2.new(1,-10,1,-40); npcS.Position = UDim2.new(0,5,0,36)
 npcS.BackgroundTransparency = 1; npcS.ScrollBarThickness = 5; npcS.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UIListLayout", npcS).Padding = UDim.new(0, 3)
+Instance.new("UIListLayout", npcS).Padding = UDim.new(0,3)
 
 selAllBtn.MouseButton1Click:Connect(function()
     for _,obj in ipairs(getAllValidEntities()) do
         selectedNPCs[obj] = true
         if not obj:FindFirstChild("_NPCKillHL") then
-            local hl = Instance.new("Highlight", obj); hl.Name = "_NPCKillHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.OutlineColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
+            local hl = Instance.new("Highlight", obj); hl.Name = "_NPCKillHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
             highlights[obj] = hl
         end
     end
@@ -1511,16 +1455,16 @@ local function refreshTable()
     npcButtons = {}
     local entities = getAllValidEntities()
     for _,obj in ipairs(entities) do
-        local valid, et, hpText, isAnchored, root = analyzeEntity(obj)
+        local valid, et, hpText, _, root = analyzeEntity(obj)
         if valid and root then
             local b = Instance.new("TextButton", npcS)
-            b.Size = UDim2.new(1, -6, 0, 26); b.Text = ""
+            b.Size = UDim2.new(1,-6,0,26); b.Text = ""
             b.BackgroundColor3 = selectedNPCs[obj] and Color3.fromRGB(20,90,30) or Color3.fromRGB(32,32,42)
             Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
             makeColLabel(b, "  "..obj.Name, UDim2.new(0,0,0,0), UDim2.new(0.38,0,1,0), Color3.fromRGB(255,255,255))
             makeColLabel(b, et, UDim2.new(0.39,0,0,0), UDim2.new(0.26,0,1,0), Color3.fromRGB(180,220,255))
             local hp = makeColLabel(b, hpText, UDim2.new(0.66,0,0,0), UDim2.new(0.18,0,1,0), Color3.fromRGB(150,255,150))
-            local ow = makeColLabel(b, checkOwnership(root), UDim2.new(0.85,0,0,0), UDim2.new(0.14,0,1,0), Color3.fromRGB(200,200,200))
+            local ow = makeColLabel(b, checkOwner(root), UDim2.new(0.85,0,0,0), UDim2.new(0.14,0,1,0), Color3.fromRGB(200,200,200))
             b.MouseButton1Click:Connect(function()
                 if selectedNPCs[obj] then
                     selectedNPCs[obj] = nil; b.BackgroundColor3 = Color3.fromRGB(32,32,42)
@@ -1528,7 +1472,7 @@ local function refreshTable()
                 else
                     selectedNPCs[obj] = true; currentNPC = obj; b.BackgroundColor3 = Color3.fromRGB(20,90,30)
                     if not obj:FindFirstChild("_NPCKillHL") then
-                        local hl = Instance.new("Highlight", obj); hl.Name = "_NPCKillHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.OutlineColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
+                        local hl = Instance.new("Highlight", obj); hl.Name = "_NPCKillHL"; hl.FillColor = Color3.fromRGB(0,255,0); hl.FillTransparency = 0.65
                         highlights[obj] = hl
                     end
                 end
@@ -1536,7 +1480,7 @@ local function refreshTable()
             table.insert(npcButtons, {obj, b, hp, ow, root})
         end
     end
-    title.Text = "  👑 KILL v37.0 (Целей: "..#entities.." | Методов: 60+ | Каст: 6 ориг + 1 нов | Anti-Kick: "..(AntiKickPro.active and "ON" or "OFF")..")"
+    title.Text = "  👑 KILL v38.0 (Целей: "..#entities.." | Методов: "..#MethodRegistry..")"
 end
 
 task.spawn(function()
@@ -1547,25 +1491,12 @@ task.spawn(function()
             if obj and obj.Parent and b and b.Parent and root and root.Parent then
                 b.BackgroundColor3 = selectedNPCs[obj] and Color3.fromRGB(20,90,30) or Color3.fromRGB(32,32,42)
                 local valid, _, hpText = analyzeEntity(obj)
-                if valid then hpLbl.Text = hpText; if string.find(hpText,"0") or string.find(hpText,"-") then hpLbl.TextColor3 = Color3.fromRGB(255,100,100) else hpLbl.TextColor3 = Color3.fromRGB(150,255,150) end end
-                local owText = checkOwnership(root)
-                owLbl.Text = owText
-                if string.find(owText,"ME") then owLbl.TextColor3 = Color3.fromRGB(100,255,100) elseif string.find(owText,"ANCHORED") then owLbl.TextColor3 = Color3.fromRGB(255,180,0) else owLbl.TextColor3 = Color3.fromRGB(255,100,100) end
+                if valid then hpLbl.Text = hpText end
+                owLbl.Text = checkOwner(root)
             end
         end
     end
 end)
-
-local function boostAuth()
-    pcall(function()
-        if sethiddenproperty then
-            sethiddenproperty(lp, "SimulationRadius", 1e11)
-            sethiddenproperty(lp, "MaxSimulationRadius", 1e11)
-        end
-    end)
-end
-track("boostRS", rs.RenderStepped:Connect(boostAuth))
-track("boostHB", rs.Heartbeat:Connect(boostAuth))
 
 task.spawn(function() while true do pcall(refreshTable); task.wait(3.5) end end)
 pcall(refreshTable)
@@ -1579,18 +1510,20 @@ local function unloadAll()
     for _,hl in pairs(highlights) do pcall(function() if hl and hl.Parent then hl:Destroy() end end) end
     for _,o in ipairs(ws:GetDescendants()) do if o.Name == "_NPCKillHL" then pcall(function() o:Destroy() end) end end
     if sg and sg.Parent then sg:Destroy() end
-    if highlight and highlight.Parent then highlight:Destroy() end
     _G.NPCKillTesterPro = nil
 end
 
 _G.NPCKillTesterPro.Unload = unloadAll
 unloadBtn.MouseButton1Click:Connect(unloadAll)
 
-print("=========================================================")
-print("[👑 KILL LAB v37.0 LOADED — ORIGINAL 6 CASTS EDITION 👑]")
-print("  ✅ 6 оригинальных кастов v32 + 1 новый (Player Input Sim)")
-print("  🛡️ Anti-Kick PRO 5 слоёв — ВКЛЮЧИ в панели настроек!")
-print("  🔥 NUCLEAR KILL — 60+ методов разом БЕЗ настроек")
-print("  🧪 10 новых методов v37 (№137-№146) с метками кастов")
-print("=========================================================")
+print("==========================================================")
+print("[👑 KILL v39.0 LOADED — "..#MethodRegistry.." методов, "..#CastInfo.." кастов]")
+print("  ✅ ВОССТАНОВЛЕНЫ 14 пропущенных методов из v32-v36:")
+print("     №87, №89, №92, №93, №96, №102, №119, №120,")
+print("     №125, №126, №129, №131, №132, №135")
+print("  ✅ Все текущие v37-v38 (№137-156) сохранены")
+print("  ⭐ №140 SkinnedMesh Annihilate — САМЫЙ МОЩНЫЙ")
+print("  🔥 NUCLEAR KILL — все методы без учёта настроек")
+print("  🛡️ Anti-Kick PRO 5 слоёв — не забудь включить!")
+print("==========================================================")
 
