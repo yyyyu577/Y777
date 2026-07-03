@@ -1,3 +1,50 @@
+-- ============================================================================
+-- NPC KILL TESTER PRO v40.0 — TEST SECTION SHOWS ONLY NEW METHODS (147+)
+--
+-- 🎯 ЧТО СДЕЛАНО В v40.0:
+--   ✅ Секция тестов теперь показывает ТОЛЬКО новейшие методы (id >= 147)
+--   ✅ Старые методы (1-146) остались доступны:
+--       • в раскрывающихся подменю кастов (клик по касту → подменю)
+--       • в MASTER OMNI-KILL (по настройкам)
+--       • в NUCLEAR KILL (все разом)
+--   ✅ Всего в реестре 83 метода — все работают, но в тестах только 10
+--   ✅ Константа TEST_MIN_ID = 147 — если надо будет тестить старые,
+--       просто поменяй эту цифру в коде
+--
+-- 📦 ЧТО БЫЛО В v39.0 (ПОЛНАЯ ИНВЕНТАРИЗАЦИЯ):
+--   ✅ Восстановлены 14 ПРОПУЩЕННЫХ методов из старых версий:
+--       №87, №89, №92, №93, №96, №102, №119, №120, №125, №126,
+--       №129, №131, №132, №135
+--   ✅ Все методы распределены по правильным кастам
+--   ✅ Все текущие методы (v38 №147-156) СОХРАНЕНЫ
+--   ✅ Все ранее добавленные (v37 №137-146) СОХРАНЕНЫ
+--   ✅ ИТОГО: ~83 метода в реестре
+--
+-- 🎯 ЧТО СДЕЛАНО В v38.0:
+--   ✅ ❌ УДАЛЕНЫ методы с кликом по экрану (№97 VIM Click, №100 Mobile Touch,
+--        №104 CameraAimLockFire) — они мешали, не работали нормально
+--   ✅ Панель настроек ТЕПЕРЬ РАСКРЫВАЕТСЯ (клик на касту → открывается
+--        подменю с индивидуальными тумблерами каждого метода внутри!)
+--   ✅ Панель настроек и панель тестов БОЛЬШЕ + прокрутка
+--   ✅ №137, №138, №139 добавлены в MASTER (были только в тестах)
+--   ✅ №140 SkinnedMeshAnnihilate помечен как ⭐ (ты сказал что мощный)
+--   ✅ Anti-Kick PRO сохранён (5 слоёв)
+--   ✅ Nuclear Kill сохранён
+--   ✅ 10 НОВЫХ методов v38 (№147-№156)
+--
+-- 🆕 10 НОВЫХ МЕТОДОВ v38 (№147 – №156):
+--   147. 🦾 MESH ID CORRUPTION       — подмена MeshId босса на пустой
+--   148. 📊 STATUS EFFECT INJECT     — впрыск Poison/Burn/Bleed атрибутов
+--   149. 📡 REMOTE CHAIN REPLAY      — записываем и повторяем последнюю атаку 30х
+--   150. 🩸 HUMANOID DEATH SIMULATE  — эмуляция полного death cycle
+--   151. 🦾 PART SHAPE MORPH         — Shape=Ball, всё катится (не размер!)
+--   152. 👑 GRAIL SHOTGUN BURST      — 500 TakeDamage за 1 кадр (не waves)
+--   153. 📊 MAX HEALTH LADDER        — понижаем MaxHealth ступенями от текущего
+--   154. 🦾 CANQUERY DISABLE STORM   — вырубаем CanQuery/CanTouch = нет hitbox
+--   155. 📡 TOOL CLONE FLOOD         — клонируем наш Tool 20 раз и Activate
+--   156. 🩸 HUMANOID DESCRIPTION KILL — HumanoidDescription с 0 characteristic
+-- ============================================================================
+
 if _G.NPCKillTesterPro and _G.NPCKillTesterPro.Unload then
     _G.NPCKillTesterPro.Unload()
     task.wait(0.3)
@@ -1092,7 +1139,7 @@ Instance.new("UICorner", mf).CornerRadius = UDim.new(0,14)
 
 local title = Instance.new("TextLabel", mf)
 title.Size = UDim2.new(1, -80, 0, 38)
-title.Text = "  👑 NPC KILL v38.0 — EXPANDABLE CASTS + SUB-METHOD TOGGLES"
+title.Text = "  👑 NPC KILL v40.0 — TESTS ONLY №147+ (старые в кастах ↓ и MASTER)"
 title.TextColor3 = Color3.fromRGB(255,255,255); title.Font = Enum.Font.GothamBold; title.TextSize = 12
 title.TextXAlignment = Enum.TextXAlignment.Left; title.BackgroundColor3 = Color3.fromRGB(10,10,12)
 Instance.new("UICorner", title).CornerRadius = UDim.new(0,14)
@@ -1351,7 +1398,15 @@ spdBtn.MouseButton1Click:Connect(function()
     spdBtn.BackgroundColor3 = CombatSettings.HyperSpeed and Color3.fromRGB(120,40,160) or Color3.fromRGB(60,60,80)
 end)
 
--- 🧪 БОЛЬШАЯ СЕКЦИЯ ТЕСТА (ВСЕ методы! с прокруткой)
+-- 🧪 СЕКЦИЯ ТЕСТА — ТОЛЬКО НОВЕЙШИЕ МЕТОДЫ (id >= 147) — ДЛЯ ПРОВЕРКИ!
+-- Все остальные методы доступны в раскрывающихся кастах ↑ и в MASTER/NUCLEAR кнопках
+local TEST_MIN_ID = 147  -- ← показываем только методы №147 и выше
+
+local testMethods = {}
+for _, method in ipairs(MethodRegistry) do
+    if method.id >= TEST_MIN_ID then table.insert(testMethods, method) end
+end
+
 local testSection = Instance.new("Frame", mf)
 testSection.Size = UDim2.new(1, -20, 0, 155)
 testSection.Position = UDim2.new(0, 10, 0, 454)
@@ -1360,8 +1415,8 @@ Instance.new("UICorner", testSection).CornerRadius = UDim.new(0,10)
 
 local tsTitle = Instance.new("TextLabel", testSection)
 tsTitle.Size = UDim2.new(1, 0, 0, 22)
-tsTitle.Text = "  🧪 ТЕСТ ВСЕХ "..#MethodRegistry.." МЕТОДОВ (клик = запуск отдельно) — с прокруткой:"
-tsTitle.Font = Enum.Font.GothamBold; tsTitle.TextSize = 11; tsTitle.TextColor3 = Color3.fromRGB(220,150,255)
+tsTitle.Text = "  🧪 ТЕСТ "..#testMethods.." НОВЕЙШИХ МЕТОДОВ (№"..TEST_MIN_ID.."+) — старые уже в кастах ↑ и в MASTER:"
+tsTitle.Font = Enum.Font.GothamBold; tsTitle.TextSize = 11; tsTitle.TextColor3 = Color3.fromRGB(255,200,100)
 tsTitle.TextXAlignment = Enum.TextXAlignment.Left; tsTitle.BackgroundTransparency = 1
 
 local tsGridF = Instance.new("ScrollingFrame", testSection)
@@ -1372,7 +1427,7 @@ tsGridF.AutomaticCanvasSize = Enum.AutomaticSize.Y; tsGridF.CanvasSize = UDim2.n
 local tsGrid = Instance.new("UIGridLayout", tsGridF)
 tsGrid.CellSize = UDim2.new(0, 258, 0, 34); tsGrid.CellPadding = UDim2.new(0, 5, 0, 4)
 
-for _, method in ipairs(MethodRegistry) do
+for _, method in ipairs(testMethods) do
     local b = Instance.new("TextButton", tsGridF)
     b.Text = ""; b.BackgroundColor3 = Color3.fromRGB(35,35,45); b.BorderSizePixel = 0
     Instance.new("UICorner", b).CornerRadius = UDim.new(0,5)
@@ -1517,13 +1572,10 @@ _G.NPCKillTesterPro.Unload = unloadAll
 unloadBtn.MouseButton1Click:Connect(unloadAll)
 
 print("==========================================================")
-print("[👑 KILL v39.0 LOADED — "..#MethodRegistry.." методов, "..#CastInfo.." кастов]")
-print("  ✅ ВОССТАНОВЛЕНЫ 14 пропущенных методов из v32-v36:")
-print("     №87, №89, №92, №93, №96, №102, №119, №120,")
-print("     №125, №126, №129, №131, №132, №135")
-print("  ✅ Все текущие v37-v38 (№137-156) сохранены")
-print("  ⭐ №140 SkinnedMesh Annihilate — САМЫЙ МОЩНЫЙ")
-print("  🔥 NUCLEAR KILL — все методы без учёта настроек")
+print("[👑 KILL v40.0 LOADED — "..#MethodRegistry.." методов, "..#CastInfo.." кастов]")
+print("  🧪 В секции тестов: только новейшие "..#testMethods.." методов (№"..TEST_MIN_ID.."+)")
+print("  📂 Остальные "..(#MethodRegistry - #testMethods).." методов в раскрывающихся кастах ↑")
+print("  💥 MASTER OMNI-KILL — все методы по настройкам")
+print("  🔥 NUCLEAR KILL — все "..#MethodRegistry.." методов разом")
 print("  🛡️ Anti-Kick PRO 5 слоёв — не забудь включить!")
 print("==========================================================")
-
