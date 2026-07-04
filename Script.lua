@@ -1,5 +1,4 @@
-warn("[v46] === СКРИПТ ЗАПУЩЕН — ЖДИ ДИАГНОСТИКУ ===")
-local __ok, __err = xpcall(function()
+warn("[v47] === СКРИПТ ЗАПУЩЕН ===")
 if _G.NPCKillTesterPro and _G.NPCKillTesterPro.Unload then
     _G.NPCKillTesterPro.Unload()
     task.wait(0.3)
@@ -1647,7 +1646,9 @@ local function NUCLEAR(o)
         end
     end)
 end
-warn("[v45] GUI START — если видишь это в консоли значит скрипт исполняется до GUI")
+warn("[v47] GUI START")
+local sg, mf, unloadBtn, refreshNPCs
+do
 local function newInst(class, props, parent)
     local o = Instance.new(class)
     if props then for k,v in pairs(props) do pcall(function() o[k] = v end) end end
@@ -1660,14 +1661,14 @@ local function makeCorner(p, r)
     c.Parent = p
     return c
 end
-local sg = newInst("ScreenGui", { Name = "NPCKill_v45_GUI", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 999999, Enabled = true })
+sg = newInst("ScreenGui", { Name = "NPCKill_v47_GUI", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 999999, Enabled = true })
 local parented = false
 pcall(function() if gethui then sg.Parent = gethui(); parented = true end end)
 if not parented then pcall(function() sg.Parent = game:GetService("CoreGui"); parented = (sg.Parent ~= nil) end) end
 if not parented then pcall(function() sg.Parent = lp:WaitForChild("PlayerGui", 5); parented = true end) end
-if not parented then warn("[v45] ❌ НЕ УДАЛОСЬ ЗАПАРЕНТИТЬ GUI"); return end
-warn("[v45] ✅ GUI parented to: " .. tostring(sg.Parent))
-local mf = newInst("Frame", {
+if not parented then warn("[v47] ❌ НЕ УДАЛОСЬ ЗАПАРЕНТИТЬ GUI"); return end
+warn("[v47] ✅ GUI parented to: " .. tostring(sg.Parent))
+mf = newInst("Frame", {
     Name = "MainFrame",
     Size = UDim2.new(0, 500, 0, 560),
     Position = UDim2.new(0, 20, 0, 60),
@@ -1706,7 +1707,7 @@ local minBtn = newInst("TextButton", {
     ZIndex = 12
 }, mf)
 makeCorner(minBtn, 6)
-local unloadBtn = newInst("TextButton", {
+unloadBtn = newInst("TextButton", {
     Size = UDim2.new(0, 32, 0, 28),
     Position = UDim2.new(1, -34, 0, 2),
     Text = "X",
@@ -2195,7 +2196,7 @@ desel.MouseButton1Click:Connect(function()
     selectedNPCs = {}; currentNPC = nil
 end)
 local npcButtons = {}
-local function refreshNPCs()
+refreshNPCs = function()
     for _, c in ipairs(npcS:GetChildren()) do
         if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
     end
@@ -2292,6 +2293,8 @@ end)
 task.spawn(function() while true do pcall(refreshNPCs); task.wait(6) end end)
 pcall(refreshNPCs)
 runAnalysis()
+end
+warn("[v47] GUI FINISHED — все локалки освобождены")
 local function unloadAll()
     AK.active = false; AK.installed = false
     for _, c in pairs(connections) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
@@ -2309,16 +2312,5 @@ local function unloadAll()
 end
 _G.NPCKillTesterPro.Unload = unloadAll
 unloadBtn.MouseButton1Click:Connect(unloadAll)
-warn("[v46] ✅ ВСЁ ЗАГРУЖЕНО — GUI должна быть видна в левом-верхнем углу")
-warn("[v46] ScreenGui parent: " .. tostring(sg.Parent) .. " | Методов: " .. #MethodRegistry)
-end, function(err)
-    warn("═══════════════════════════════════════════")
-    warn("❌ [v46] ОШИБКА: " .. tostring(err))
-    warn("═══════════════════════════════════════════")
-    warn(debug.traceback())
-    warn("═══════════════════════════════════════════")
-    return err
-end)
-if not __ok then
-    warn("[v46] СКРИПТ УПАЛ. Скопируй ошибку выше и покажи мне!")
-end
+warn("[v47] ✅ ВСЁ ЗАГРУЖЕНО — GUI в левом-верхнем углу")
+warn("[v47] ScreenGui parent: " .. tostring(sg.Parent) .. " | Методов: " .. #MethodRegistry)
