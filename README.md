@@ -1610,260 +1610,670 @@ local function NUCLEAR(o)
         end
     end)
 end
-local sg = Instance.new("ScreenGui")
-sg.Name = "NPCKill_v43"; sg.ResetOnSpawn = false
-pcall(function() sg.Parent = game:GetService("CoreGui") end)
-if not sg.Parent then sg.Parent = lp:WaitForChild("PlayerGui") end
-local mf = Instance.new("Frame", sg)
-mf.Size = UDim2.new(0, 500, 0, 560)
-mf.Position = UDim2.new(0.5, -250, 0.5, -280)
-mf.BackgroundColor3 = Color3.fromRGB(16,16,20)
-mf.BorderSizePixel = 0; mf.Active = true; mf.Draggable = true
-Instance.new("UICorner", mf).CornerRadius = UDim.new(0,10)
-local title = Instance.new("TextLabel", mf)
-title.Size = UDim2.new(1, -70, 0, 28); title.Text = "  👑 KILL v44 (MIN)"
-title.TextColor3 = Color3.fromRGB(255,255,255); title.Font = Enum.Font.GothamBold; title.TextSize = 12
-title.TextXAlignment = Enum.TextXAlignment.Left; title.BackgroundColor3 = Color3.fromRGB(10,10,12)
-Instance.new("UICorner", title).CornerRadius = UDim.new(0,10)
-local minBtn = Instance.new("TextButton", mf); minBtn.Size = UDim2.new(0,30,0,26); minBtn.Position = UDim2.new(1,-64,0,1)
-minBtn.Text = "-"; minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 16; minBtn.TextColor3 = Color3.fromRGB(255,255,255); minBtn.BackgroundColor3 = Color3.fromRGB(35,35,45)
-Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,6)
-local unloadBtn = Instance.new("TextButton", mf); unloadBtn.Size = UDim2.new(0,30,0,26); unloadBtn.Position = UDim2.new(1,-32,0,1)
-unloadBtn.Text = "X"; unloadBtn.Font = Enum.Font.GothamBold; unloadBtn.TextSize = 13; unloadBtn.TextColor3 = Color3.fromRGB(255,180,180); unloadBtn.BackgroundColor3 = Color3.fromRGB(90,25,25)
-Instance.new("UICorner", unloadBtn).CornerRadius = UDim.new(0,6)
+warn("[v45] GUI START — если видишь это в консоли значит скрипт исполняется до GUI")
+local function newInst(class, props, parent)
+    local o = Instance.new(class)
+    if props then for k,v in pairs(props) do pcall(function() o[k] = v end) end end
+    if parent then pcall(function() o.Parent = parent end) end
+    return o
+end
+local function makeCorner(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 6)
+    c.Parent = p
+    return c
+end
+local sg = newInst("ScreenGui", { Name = "NPCKill_v45_GUI", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 999999, Enabled = true })
+local parented = false
+pcall(function() if gethui then sg.Parent = gethui(); parented = true end end)
+if not parented then pcall(function() sg.Parent = game:GetService("CoreGui"); parented = (sg.Parent ~= nil) end) end
+if not parented then pcall(function() sg.Parent = lp:WaitForChild("PlayerGui", 5); parented = true end) end
+if not parented then warn("[v45] ❌ НЕ УДАЛОСЬ ЗАПАРЕНТИТЬ GUI"); return end
+warn("[v45] ✅ GUI parented to: " .. tostring(sg.Parent))
+local mf = newInst("Frame", {
+    Name = "MainFrame",
+    Size = UDim2.new(0, 500, 0, 560),
+    Position = UDim2.new(0, 20, 0, 60),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+    BorderSizePixel = 0,
+    Active = true,
+    Draggable = true,
+    Visible = true,
+    ZIndex = 10
+}, sg)
+makeCorner(mf, 10)
+local stroke = newInst("UIStroke", { Color = Color3.fromRGB(80, 80, 100), Thickness = 2, Transparency = 0.3 }, mf)
+local title = newInst("TextLabel", {
+    Name = "Title",
+    Size = UDim2.new(1, -70, 0, 32),
+    Position = UDim2.new(0, 0, 0, 0),
+    Text = "  👑 KILL v45.0 (GUI FIXED)",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    Font = Enum.Font.GothamBold,
+    TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundColor3 = Color3.fromRGB(10, 10, 14),
+    BorderSizePixel = 0,
+    ZIndex = 11
+}, mf)
+makeCorner(title, 10)
+local minBtn = newInst("TextButton", {
+    Size = UDim2.new(0, 32, 0, 28),
+    Position = UDim2.new(1, -68, 0, 2),
+    Text = "-",
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 55),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, mf)
+makeCorner(minBtn, 6)
+local unloadBtn = newInst("TextButton", {
+    Size = UDim2.new(0, 32, 0, 28),
+    Position = UDim2.new(1, -34, 0, 2),
+    Text = "X",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = Color3.fromRGB(255, 200, 200),
+    BackgroundColor3 = Color3.fromRGB(100, 30, 30),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, mf)
+makeCorner(unloadBtn, 6)
 local minimized = false
+local savedChildren = {}
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
-        mf:TweenSize(UDim2.new(0,500,0,30), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true); minBtn.Text = "+"
-        for _,v in ipairs(mf:GetChildren()) do if v:IsA("GuiObject") and v~=title and v~=minBtn and v~=unloadBtn then v.Visible=false end end
+        mf:TweenSize(UDim2.new(0, 500, 0, 34), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+        minBtn.Text = "+"
+        for _, v in ipairs(mf:GetChildren()) do
+            if v:IsA("GuiObject") and v ~= title and v ~= minBtn and v ~= unloadBtn then
+                v.Visible = false
+            end
+        end
     else
-        mf:TweenSize(UDim2.new(0,500,0,560), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true); minBtn.Text = "-"
-        for _,v in ipairs(mf:GetChildren()) do if v:IsA("GuiObject") and v~=title and v~=minBtn and v~=unloadBtn then v.Visible=true end end
+        mf:TweenSize(UDim2.new(0, 500, 0, 560), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+        minBtn.Text = "-"
+        for _, v in ipairs(mf:GetChildren()) do
+            if v:IsA("GuiObject") and v ~= title and v ~= minBtn and v ~= unloadBtn then
+                v.Visible = true
+            end
+        end
     end
 end)
-local actF = Instance.new("Frame", mf); actF.Size = UDim2.new(1,-10,0,38); actF.Position = UDim2.new(0,5,0,32); actF.BackgroundTransparency = 1
-local killBtn = Instance.new("TextButton", actF); killBtn.Size = UDim2.new(0.33,-2,1,0); killBtn.Position = UDim2.new(0,0,0,0)
-killBtn.Text = "💥 MASTER"; killBtn.Font = Enum.Font.GothamBold; killBtn.TextSize = 12
-killBtn.TextColor3 = Color3.fromRGB(255,255,255); killBtn.BackgroundColor3 = Color3.fromRGB(10,140,60)
-Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0,6)
-killBtn.MouseButton1Click:Connect(function() local t=getTargets(); if #t==0 then return end; for _,o in ipairs(t) do task.spawn(function() MASTER(o) end) end end)
-local killAllBtn = Instance.new("TextButton", actF); killAllBtn.Size = UDim2.new(0.33,-2,1,0); killAllBtn.Position = UDim2.new(0.335,0,0,0)
-killAllBtn.Text = "⚡ ALL"; killAllBtn.Font = Enum.Font.GothamBold; killAllBtn.TextSize = 12
-killAllBtn.TextColor3 = Color3.fromRGB(255,255,0); killAllBtn.BackgroundColor3 = Color3.fromRGB(160,30,0)
-Instance.new("UICorner", killAllBtn).CornerRadius = UDim.new(0,6)
-killAllBtn.MouseButton1Click:Connect(function() task.spawn(function() for i,o in ipairs(getAllNPCs()) do task.spawn(function() MASTER(o) end); if i%3==0 then task.wait(0.05) end end end) end)
-local nucBtn = Instance.new("TextButton", actF); nucBtn.Size = UDim2.new(0.33,-2,1,0); nucBtn.Position = UDim2.new(0.67,0,0,0)
-nucBtn.Text = "🔥 NUCLEAR"; nucBtn.Font = Enum.Font.GothamBold; nucBtn.TextSize = 12
-nucBtn.TextColor3 = Color3.fromRGB(255,255,255); nucBtn.BackgroundColor3 = Color3.fromRGB(200,20,20)
-Instance.new("UICorner", nucBtn).CornerRadius = UDim.new(0,6)
-nucBtn.MouseButton1Click:Connect(function() local t=getTargets(); if #t==0 then t=getAllNPCs() end; for _,o in ipairs(t) do task.spawn(function() NUCLEAR(o) end) end end)
-local tabBar = Instance.new("Frame", mf); tabBar.Size = UDim2.new(1,-10,0,24); tabBar.Position = UDim2.new(0,5,0,74); tabBar.BackgroundTransparency = 1
+local actF = newInst("Frame", {
+    Size = UDim2.new(1, -12, 0, 42),
+    Position = UDim2.new(0, 6, 0, 38),
+    BackgroundTransparency = 1,
+    ZIndex = 11
+}, mf)
+local killBtn = newInst("TextButton", {
+    Size = UDim2.new(0.33, -4, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    Text = "💥 MASTER",
+    Font = Enum.Font.GothamBold,
+    TextSize = 13,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundColor3 = Color3.fromRGB(20, 140, 70),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, actF)
+makeCorner(killBtn, 6)
+killBtn.MouseButton1Click:Connect(function()
+    local t = getTargets()
+    if #t == 0 then warn("[MASTER] Выбери цель!"); return end
+    for _, o in ipairs(t) do task.spawn(function() MASTER(o) end) end
+end)
+local killAllBtn = newInst("TextButton", {
+    Size = UDim2.new(0.33, -4, 1, 0),
+    Position = UDim2.new(0.335, 2, 0, 0),
+    Text = "⚡ ALL",
+    Font = Enum.Font.GothamBold,
+    TextSize = 13,
+    TextColor3 = Color3.fromRGB(255, 255, 0),
+    BackgroundColor3 = Color3.fromRGB(170, 40, 20),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, actF)
+makeCorner(killAllBtn, 6)
+killAllBtn.MouseButton1Click:Connect(function()
+    task.spawn(function()
+        for i, o in ipairs(getAllNPCs()) do
+            task.spawn(function() MASTER(o) end)
+            if i % 3 == 0 then task.wait(0.05) end
+        end
+    end)
+end)
+local nucBtn = newInst("TextButton", {
+    Size = UDim2.new(0.33, -4, 1, 0),
+    Position = UDim2.new(0.67, 4, 0, 0),
+    Text = "🔥 NUCLEAR",
+    Font = Enum.Font.GothamBold,
+    TextSize = 13,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundColor3 = Color3.fromRGB(200, 30, 30),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, actF)
+makeCorner(nucBtn, 6)
+nucBtn.MouseButton1Click:Connect(function()
+    local t = getTargets()
+    if #t == 0 then t = getAllNPCs() end
+    for _, o in ipairs(t) do task.spawn(function() NUCLEAR(o) end) end
+end)
+local tabBar = newInst("Frame", {
+    Size = UDim2.new(1, -12, 0, 28),
+    Position = UDim2.new(0, 6, 0, 84),
+    BackgroundTransparency = 1,
+    ZIndex = 11
+}, mf)
 local tabPanels = {}
 local curTab = "casts"
+local tabButtons = {}
 local function makeTabBtn(id, label, x, w)
-    local b = Instance.new("TextButton", tabBar)
-    b.Size = UDim2.new(w,-2,1,0); b.Position = UDim2.new(x,0,0,0)
-    b.Text = label; b.Font = Enum.Font.GothamBold; b.TextSize = 10
-    b.TextColor3 = Color3.fromRGB(255,255,255); b.BackgroundColor3 = (id==curTab) and Color3.fromRGB(60,100,140) or Color3.fromRGB(40,40,55)
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
+    local b = newInst("TextButton", {
+        Size = UDim2.new(w, -3, 1, 0),
+        Position = UDim2.new(x, 0, 0, 0),
+        Text = label,
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = (id == curTab) and Color3.fromRGB(60, 100, 140) or Color3.fromRGB(45, 45, 55),
+        BorderSizePixel = 0,
+        ZIndex = 12
+    }, tabBar)
+    makeCorner(b, 5)
+    tabButtons[id] = b
     b.MouseButton1Click:Connect(function()
         curTab = id
         for pid, p in pairs(tabPanels) do p.Visible = (pid == id) end
-        for _, ch in ipairs(tabBar:GetChildren()) do if ch:IsA("TextButton") then ch.BackgroundColor3 = Color3.fromRGB(40,40,55) end end
-        b.BackgroundColor3 = Color3.fromRGB(60,100,140)
+        for tid, tb in pairs(tabButtons) do
+            tb.BackgroundColor3 = (tid == id) and Color3.fromRGB(60, 100, 140) or Color3.fromRGB(45, 45, 55)
+        end
     end)
+    return b
 end
-makeTabBtn("casts", "⚙️ Настройки", 0,    0.34)
+makeTabBtn("casts", "⚙️ Настройки", 0, 0.34)
 makeTabBtn("tests", "🧪 Тесты v43", 0.34, 0.33)
-makeTabBtn("npcs",  "📋 NPC",       0.67, 0.33)
-local panelArea = Instance.new("Frame", mf); panelArea.Size = UDim2.new(1,-10,1,-104); panelArea.Position = UDim2.new(0,5,0,100); panelArea.BackgroundTransparency = 1
-local castsPanel = Instance.new("Frame", panelArea); castsPanel.Size = UDim2.new(1,0,1,0); castsPanel.BackgroundTransparency = 1; castsPanel.Visible = true
+makeTabBtn("npcs", "📋 NPC", 0.67, 0.33)
+local panelArea = newInst("Frame", {
+    Size = UDim2.new(1, -12, 1, -122),
+    Position = UDim2.new(0, 6, 0, 116),
+    BackgroundTransparency = 1,
+    ZIndex = 11
+}, mf)
+local castsPanel = newInst("Frame", {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Visible = true,
+    ZIndex = 11
+}, panelArea)
 tabPanels.casts = castsPanel
-local castsScroll = Instance.new("ScrollingFrame", castsPanel)
-castsScroll.Size = UDim2.new(1,-4,1,-38); castsScroll.BackgroundTransparency = 1; castsScroll.ScrollBarThickness = 4
-castsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; castsScroll.CanvasSize = UDim2.new(0,0,0,0)
-local castsList = Instance.new("UIListLayout", castsScroll); castsList.Padding = UDim.new(0,2)
+local castsScroll = newInst("ScrollingFrame", {
+    Size = UDim2.new(1, -4, 1, -40),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(100, 100, 130),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ZIndex = 11
+}, castsPanel)
+local castsList = newInst("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, castsScroll)
 local CastInfo = {
-    {key="GoldenGrail",    icon="👑", label="Golden Grail",    color=Color3.fromRGB(180,140,0)},
-    {key="Events",         icon="📡", label="Events/Remotes",  color=Color3.fromRGB(0,100,160)},
-    {key="Weapons",        icon="🗡️", label="Weapons",         color=Color3.fromRGB(80,140,80)},
-    {key="Touch",          icon="👆", label="Touch/Hitbox",    color=Color3.fromRGB(80,120,180)},
-    {key="CustomRigs",     icon="🦾", label="Custom Rigs",     color=Color3.fromRGB(160,80,0)},
-    {key="FEClassic",      icon="🩸", label="FE Classic",      color=Color3.fromRGB(120,40,40)},
-    {key="MathStats",      icon="📊", label="Math Stats",      color=Color3.fromRGB(100,20,100)},
-    {key="PlayerInputSim", icon="🎮", label="Input Sim",       color=Color3.fromRGB(0,140,140)},
-    {key="BossSpecial",    icon="👹", label="BOSS SPECIAL ⭐", color=Color3.fromRGB(180,40,180)},
-    {key="DestroyerServer",icon="🚀", label="Destroyer",       color=Color3.fromRGB(180,20,0)},
+    { key = "GoldenGrail",     icon = "👑", label = "Golden Grail",    color = Color3.fromRGB(180, 140, 0) },
+    { key = "Events",          icon = "📡", label = "Events/Remotes",  color = Color3.fromRGB(0, 100, 160) },
+    { key = "Weapons",         icon = "🗡️", label = "Weapons",         color = Color3.fromRGB(80, 140, 80) },
+    { key = "Touch",           icon = "👆", label = "Touch/Hitbox",    color = Color3.fromRGB(80, 120, 180) },
+    { key = "CustomRigs",      icon = "🦾", label = "Custom Rigs",     color = Color3.fromRGB(160, 80, 0) },
+    { key = "FEClassic",       icon = "🩸", label = "FE Classic",      color = Color3.fromRGB(120, 40, 40) },
+    { key = "MathStats",       icon = "📊", label = "Math Stats",      color = Color3.fromRGB(100, 20, 100) },
+    { key = "PlayerInputSim",  icon = "🎮", label = "Input Sim",       color = Color3.fromRGB(0, 140, 140) },
+    { key = "BossSpecial",     icon = "👹", label = "BOSS SPECIAL ⭐", color = Color3.fromRGB(180, 40, 180) },
+    { key = "DestroyerServer", icon = "🚀", label = "Destroyer",       color = Color3.fromRGB(180, 20, 0) },
 }
 local function createCast(info, order)
-    local w = Instance.new("Frame", castsScroll); w.Size = UDim2.new(1,-6,0,24); w.BackgroundTransparency=1; w.LayoutOrder=order; w.AutomaticSize=Enum.AutomaticSize.Y
-    local hdr = Instance.new("TextButton", w); hdr.Size = UDim2.new(1,0,0,24); hdr.Text=""
-    hdr.BackgroundColor3 = CastEnabled[info.key] and info.color or Color3.fromRGB(45,45,55); hdr.AutoButtonColor=false
-    Instance.new("UICorner", hdr).CornerRadius = UDim.new(0,4)
-    local arr = Instance.new("TextLabel", hdr); arr.Size = UDim2.new(0,18,1,0); arr.Position = UDim2.new(0,3,0,0)
-    arr.Text = "▶"; arr.Font = Enum.Font.GothamBold; arr.TextSize = 11; arr.TextColor3 = Color3.fromRGB(255,255,255); arr.BackgroundTransparency = 1
-    local lbl = Instance.new("TextLabel", hdr); lbl.Size = UDim2.new(1,-90,1,0); lbl.Position = UDim2.new(0,23,0,0)
-    lbl.Text = info.icon.." "..info.label; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 10
-    lbl.TextColor3 = Color3.fromRGB(255,255,255); lbl.BackgroundTransparency = 1; lbl.TextXAlignment = Enum.TextXAlignment.Left
-    local tog = Instance.new("TextButton", hdr); tog.Size = UDim2.new(0,55,0,16); tog.Position = UDim2.new(1,-58,0,4)
-    tog.Text = CastEnabled[info.key] and "ON" or "OFF"; tog.Font = Enum.Font.GothamBold; tog.TextSize = 9
-    tog.TextColor3 = Color3.fromRGB(255,255,255); tog.BackgroundColor3 = CastEnabled[info.key] and Color3.fromRGB(40,120,40) or Color3.fromRGB(120,40,40)
-    Instance.new("UICorner", tog).CornerRadius = UDim.new(0,3)
+    local wrap = newInst("Frame", {
+        Size = UDim2.new(1, -8, 0, 28),
+        BackgroundTransparency = 1,
+        LayoutOrder = order,
+        AutomaticSize = Enum.AutomaticSize.Y,
+        ZIndex = 11
+    }, castsScroll)
+    local hdr = newInst("TextButton", {
+        Size = UDim2.new(1, 0, 0, 28),
+        Text = "",
+        BackgroundColor3 = CastEnabled[info.key] and info.color or Color3.fromRGB(50, 50, 60),
+        AutoButtonColor = false,
+        BorderSizePixel = 0,
+        ZIndex = 12
+    }, wrap)
+    makeCorner(hdr, 5)
+    local arr = newInst("TextLabel", {
+        Size = UDim2.new(0, 20, 1, 0),
+        Position = UDim2.new(0, 4, 0, 0),
+        Text = "▶",
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 1,
+        ZIndex = 13
+    }, hdr)
+    local lbl = newInst("TextLabel", {
+        Size = UDim2.new(1, -90, 1, 0),
+        Position = UDim2.new(0, 26, 0, 0),
+        Text = info.icon .. " " .. info.label,
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 1,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 13
+    }, hdr)
+    local tog = newInst("TextButton", {
+        Size = UDim2.new(0, 60, 0, 18),
+        Position = UDim2.new(1, -64, 0, 5),
+        Text = CastEnabled[info.key] and "ON" or "OFF",
+        Font = Enum.Font.GothamBold,
+        TextSize = 10,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = CastEnabled[info.key] and Color3.fromRGB(40, 130, 40) or Color3.fromRGB(130, 40, 40),
+        BorderSizePixel = 0,
+        ZIndex = 14
+    }, hdr)
+    makeCorner(tog, 4)
     tog.MouseButton1Click:Connect(function()
         CastEnabled[info.key] = not CastEnabled[info.key]
         tog.Text = CastEnabled[info.key] and "ON" or "OFF"
-        tog.BackgroundColor3 = CastEnabled[info.key] and Color3.fromRGB(40,120,40) or Color3.fromRGB(120,40,40)
-        hdr.BackgroundColor3 = CastEnabled[info.key] and info.color or Color3.fromRGB(45,45,55)
+        tog.BackgroundColor3 = CastEnabled[info.key] and Color3.fromRGB(40, 130, 40) or Color3.fromRGB(130, 40, 40)
+        hdr.BackgroundColor3 = CastEnabled[info.key] and info.color or Color3.fromRGB(50, 50, 60)
     end)
-    local sub = Instance.new("Frame", w); sub.Size = UDim2.new(1,-14,0,0); sub.Position = UDim2.new(0,14,0,26)
-    sub.BackgroundColor3 = Color3.fromRGB(24,24,32); sub.Visible = false; sub.AutomaticSize = Enum.AutomaticSize.Y
-    Instance.new("UICorner", sub).CornerRadius = UDim.new(0,3)
-    local sl = Instance.new("UIListLayout", sub); sl.Padding = UDim.new(0,1)
-    local pd = Instance.new("UIPadding", sub); pd.PaddingLeft = UDim.new(0,4); pd.PaddingRight = UDim.new(0,4); pd.PaddingTop = UDim.new(0,4); pd.PaddingBottom = UDim.new(0,4)
+    local sub = newInst("Frame", {
+        Size = UDim2.new(1, -16, 0, 0),
+        Position = UDim2.new(0, 16, 0, 30),
+        BackgroundColor3 = Color3.fromRGB(28, 28, 36),
+        BorderSizePixel = 0,
+        Visible = false,
+        AutomaticSize = Enum.AutomaticSize.Y,
+        ZIndex = 12
+    }, wrap)
+    makeCorner(sub, 4)
+    local sl = newInst("UIListLayout", { Padding = UDim.new(0, 2) }, sub)
+    local pd = newInst("UIPadding", {
+        PaddingLeft = UDim.new(0, 5),
+        PaddingRight = UDim.new(0, 5),
+        PaddingTop = UDim.new(0, 5),
+        PaddingBottom = UDim.new(0, 5)
+    }, sub)
     for _, method in ipairs(MethodRegistry) do
         if method.cast == info.key then
-            local mb = Instance.new("TextButton", sub); mb.Size = UDim2.new(1,-6,0,18); mb.Text=""
-            mb.BackgroundColor3 = MethodEnabled[method.id] and Color3.fromRGB(35,70,45) or Color3.fromRGB(50,35,35); mb.AutoButtonColor=false
-            Instance.new("UICorner", mb).CornerRadius = UDim.new(0,3)
-            local st = Instance.new("TextLabel", mb); st.Size = UDim2.new(0,18,1,0); st.Position = UDim2.new(0,3,0,0)
-            st.Text = MethodEnabled[method.id] and "✅" or "❌"; st.Font = Enum.Font.GothamBold; st.TextSize = 9
-            st.TextColor3 = Color3.fromRGB(255,255,255); st.BackgroundTransparency = 1
-            local nl = Instance.new("TextLabel", mb); nl.Size = UDim2.new(1,-24,1,0); nl.Position = UDim2.new(0,22,0,0)
-            nl.Text = method.name; nl.Font = Enum.Font.GothamBold; nl.TextSize = 9
-            nl.TextColor3 = Color3.fromRGB(255,255,255); nl.BackgroundTransparency = 1; nl.TextXAlignment = Enum.TextXAlignment.Left
+            local mb = newInst("TextButton", {
+                Size = UDim2.new(1, -8, 0, 20),
+                Text = "",
+                BackgroundColor3 = MethodEnabled[method.id] and Color3.fromRGB(40, 80, 50) or Color3.fromRGB(60, 40, 40),
+                AutoButtonColor = false,
+                BorderSizePixel = 0,
+                ZIndex = 13
+            }, sub)
+            makeCorner(mb, 3)
+            local st = newInst("TextLabel", {
+                Size = UDim2.new(0, 20, 1, 0),
+                Position = UDim2.new(0, 4, 0, 0),
+                Text = MethodEnabled[method.id] and "✅" or "❌",
+                Font = Enum.Font.GothamBold,
+                TextSize = 10,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundTransparency = 1,
+                ZIndex = 14
+            }, mb)
+            local nl = newInst("TextLabel", {
+                Size = UDim2.new(1, -28, 1, 0),
+                Position = UDim2.new(0, 26, 0, 0),
+                Text = method.name,
+                Font = Enum.Font.GothamBold,
+                TextSize = 9,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundTransparency = 1,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 14
+            }, mb)
             mb.MouseButton1Click:Connect(function()
                 MethodEnabled[method.id] = not MethodEnabled[method.id]
                 st.Text = MethodEnabled[method.id] and "✅" or "❌"
-                mb.BackgroundColor3 = MethodEnabled[method.id] and Color3.fromRGB(35,70,45) or Color3.fromRGB(50,35,35)
+                mb.BackgroundColor3 = MethodEnabled[method.id] and Color3.fromRGB(40, 80, 50) or Color3.fromRGB(60, 40, 40)
             end)
         end
     end
-    hdr.MouseButton1Click:Connect(function() sub.Visible = not sub.Visible; arr.Text = sub.Visible and "▼" or "▶" end)
+    hdr.MouseButton1Click:Connect(function()
+        sub.Visible = not sub.Visible
+        arr.Text = sub.Visible and "▼" or "▶"
+    end)
 end
 for i, info in ipairs(CastInfo) do createCast(info, i) end
-local regF = Instance.new("Frame", castsPanel); regF.Size = UDim2.new(1,-4,0,32); regF.Position = UDim2.new(0,0,1,-32); regF.BackgroundTransparency=1
-local akBtn = Instance.new("TextButton", regF); akBtn.Size = UDim2.new(0.34,-2,1,0); akBtn.Position = UDim2.new(0,0,0,0)
-akBtn.Text = "🛡️ AntiKick OFF"; akBtn.Font = Enum.Font.GothamBold; akBtn.TextSize = 10
-akBtn.TextColor3 = Color3.fromRGB(255,255,255); akBtn.BackgroundColor3 = Color3.fromRGB(45,45,55)
-Instance.new("UICorner", akBtn).CornerRadius = UDim.new(0,4)
+local regF = newInst("Frame", {
+    Size = UDim2.new(1, -4, 0, 34),
+    Position = UDim2.new(0, 0, 1, -34),
+    BackgroundTransparency = 1,
+    ZIndex = 11
+}, castsPanel)
+local akBtn = newInst("TextButton", {
+    Size = UDim2.new(0.34, -3, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    Text = "🛡️ AntiKick OFF",
+    Font = Enum.Font.GothamBold,
+    TextSize = 10,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundColor3 = Color3.fromRGB(50, 50, 60),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, regF)
+makeCorner(akBtn, 5)
 local akSt = false
-akBtn.MouseButton1Click:Connect(function() akSt = not akSt; AK:Toggle(akSt); akBtn.Text = "🛡️ AntiKick "..(akSt and "ON ✅" or "OFF"); akBtn.BackgroundColor3 = akSt and Color3.fromRGB(0,180,120) or Color3.fromRGB(45,45,55) end)
-local dV = {5000,50000,500000,999999,math.huge}; local dN = {"5K","50K","500K","999K","MAX"}; local dI = 2
-local dmgBtn = Instance.new("TextButton", regF); dmgBtn.Size = UDim2.new(0.33,-2,1,0); dmgBtn.Position = UDim2.new(0.34,0,0,0)
-dmgBtn.Text = "⚙️ DMG: "..dN[dI]; dmgBtn.Font = Enum.Font.GothamBold; dmgBtn.TextSize = 10
-dmgBtn.TextColor3 = Color3.fromRGB(255,255,255); dmgBtn.BackgroundColor3 = Color3.fromRGB(0,120,80)
-Instance.new("UICorner", dmgBtn).CornerRadius = UDim.new(0,4)
-dmgBtn.MouseButton1Click:Connect(function() dI = (dI%#dV)+1; CombatSettings.DamageAmount = dV[dI]; dmgBtn.Text = "⚙️ DMG: "..dN[dI] end)
-local reBtn = Instance.new("TextButton", regF); reBtn.Size = UDim2.new(0.33,-2,1,0); reBtn.Position = UDim2.new(0.67,0,0,0)
-reBtn.Text = "🔄 Rescan"; reBtn.Font = Enum.Font.GothamBold; reBtn.TextSize = 10
-reBtn.TextColor3 = Color3.fromRGB(255,255,255); reBtn.BackgroundColor3 = Color3.fromRGB(60,60,100)
-Instance.new("UICorner", reBtn).CornerRadius = UDim.new(0,4)
-reBtn.MouseButton1Click:Connect(function() runAnalysis(); PartsCache = {}; reBtn.Text = "🔄 OK "..#DeepData.CombatRemotes; task.delay(2, function() reBtn.Text = "🔄 Rescan" end) end)
-local testsPanel = Instance.new("Frame", panelArea); testsPanel.Size = UDim2.new(1,0,1,0); testsPanel.BackgroundTransparency=1; testsPanel.Visible=false
+akBtn.MouseButton1Click:Connect(function()
+    akSt = not akSt
+    AK:Toggle(akSt)
+    akBtn.Text = "🛡️ AntiKick " .. (akSt and "ON ✅" or "OFF")
+    akBtn.BackgroundColor3 = akSt and Color3.fromRGB(0, 180, 120) or Color3.fromRGB(50, 50, 60)
+end)
+local dV = { 5000, 50000, 500000, 999999, math.huge }
+local dN = { "5K", "50K", "500K", "999K", "MAX" }
+local dI = 2
+local dmgBtn = newInst("TextButton", {
+    Size = UDim2.new(0.33, -3, 1, 0),
+    Position = UDim2.new(0.34, 0, 0, 0),
+    Text = "⚙️ DMG: " .. dN[dI],
+    Font = Enum.Font.GothamBold,
+    TextSize = 10,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundColor3 = Color3.fromRGB(0, 130, 90),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, regF)
+makeCorner(dmgBtn, 5)
+dmgBtn.MouseButton1Click:Connect(function()
+    dI = (dI % #dV) + 1
+    CombatSettings.DamageAmount = dV[dI]
+    dmgBtn.Text = "⚙️ DMG: " .. dN[dI]
+end)
+local reBtn = newInst("TextButton", {
+    Size = UDim2.new(0.33, -3, 1, 0),
+    Position = UDim2.new(0.67, 0, 0, 0),
+    Text = "🔄 Rescan",
+    Font = Enum.Font.GothamBold,
+    TextSize = 10,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundColor3 = Color3.fromRGB(70, 70, 110),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, regF)
+makeCorner(reBtn, 5)
+reBtn.MouseButton1Click:Connect(function()
+    runAnalysis()
+    PartsCache = {}
+    reBtn.Text = "🔄 OK " .. #DeepData.CombatRemotes
+    task.delay(2, function() reBtn.Text = "🔄 Rescan" end)
+end)
+local testsPanel = newInst("Frame", {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Visible = false,
+    ZIndex = 11
+}, panelArea)
 tabPanels.tests = testsPanel
 local TEST_MIN_ID = 177
-local testScroll = Instance.new("ScrollingFrame", testsPanel)
-testScroll.Size = UDim2.new(1,-4,1,0); testScroll.BackgroundTransparency=1; testScroll.ScrollBarThickness=4
-testScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; testScroll.CanvasSize = UDim2.new(0,0,0,0)
-local testList = Instance.new("UIListLayout", testScroll); testList.Padding = UDim.new(0,3)
+local testScroll = newInst("ScrollingFrame", {
+    Size = UDim2.new(1, -4, 1, 0),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(100, 100, 130),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ZIndex = 11
+}, testsPanel)
+local testList = newInst("UIListLayout", { Padding = UDim.new(0, 4) }, testScroll)
 for _, method in ipairs(MethodRegistry) do
     if method.id >= TEST_MIN_ID then
-        local b = Instance.new("TextButton", testScroll); b.Size = UDim2.new(1,-6,0,36); b.Text=""
-        local ci; for _,c in ipairs(CastInfo) do if c.key==method.cast then ci=c; break end end
-        b.BackgroundColor3 = ci and ci.color or Color3.fromRGB(45,45,55)
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
-        local t1 = Instance.new("TextLabel", b); t1.Size = UDim2.new(1,-8,0,17); t1.Position = UDim2.new(0,4,0,2)
-        t1.Text = method.name; t1.Font = Enum.Font.GothamBold; t1.TextSize = 11
-        t1.TextColor3 = Color3.fromRGB(255,255,255); t1.BackgroundTransparency = 1; t1.TextXAlignment = Enum.TextXAlignment.Left
-        local t2 = Instance.new("TextLabel", b); t2.Size = UDim2.new(1,-8,0,14); t2.Position = UDim2.new(0,4,0,19)
-        t2.Text = method.desc; t2.Font = Enum.Font.SourceSans; t2.TextSize = 10
-        t2.TextColor3 = Color3.fromRGB(230,230,240); t2.BackgroundTransparency = 1; t2.TextXAlignment = Enum.TextXAlignment.Left
-        b.MouseButton1Click:Connect(function() local t=getTargets(); if #t==0 then return end; for _,o in ipairs(t) do task.spawn(function() pcall(function() method.fn(o) end) end) end end)
+        local ci
+        for _, c in ipairs(CastInfo) do if c.key == method.cast then ci = c; break end end
+        local b = newInst("TextButton", {
+            Size = UDim2.new(1, -8, 0, 38),
+            Text = "",
+            BackgroundColor3 = ci and ci.color or Color3.fromRGB(50, 50, 60),
+            BorderSizePixel = 0,
+            ZIndex = 12
+        }, testScroll)
+        makeCorner(b, 5)
+        local t1 = newInst("TextLabel", {
+            Size = UDim2.new(1, -10, 0, 18),
+            Position = UDim2.new(0, 5, 0, 2),
+            Text = method.name,
+            Font = Enum.Font.GothamBold,
+            TextSize = 11,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 1,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 13
+        }, b)
+        local t2 = newInst("TextLabel", {
+            Size = UDim2.new(1, -10, 0, 15),
+            Position = UDim2.new(0, 5, 0, 20),
+            Text = method.desc,
+            Font = Enum.Font.SourceSans,
+            TextSize = 10,
+            TextColor3 = Color3.fromRGB(230, 230, 240),
+            BackgroundTransparency = 1,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 13
+        }, b)
+        b.MouseButton1Click:Connect(function()
+            local t = getTargets()
+            if #t == 0 then warn("[TEST] Выбери цель!"); return end
+            for _, o in ipairs(t) do task.spawn(function() pcall(function() method.fn(o) end) end) end
+        end)
     end
 end
-local npcsPanel = Instance.new("Frame", panelArea); npcsPanel.Size = UDim2.new(1,0,1,0); npcsPanel.BackgroundTransparency=1; npcsPanel.Visible=false
+local npcsPanel = newInst("Frame", {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Visible = false,
+    ZIndex = 11
+}, panelArea)
 tabPanels.npcs = npcsPanel
-local npcHdr = Instance.new("Frame", npcsPanel); npcHdr.Size = UDim2.new(1,-4,0,22); npcHdr.BackgroundColor3 = Color3.fromRGB(28,28,38)
-Instance.new("UICorner", npcHdr).CornerRadius = UDim.new(0,4)
-local selAll = Instance.new("TextButton", npcHdr); selAll.Size = UDim2.new(0,45,0,16); selAll.Position = UDim2.new(1,-94,0,3)
-selAll.Text = "✅ Все"; selAll.Font = Enum.Font.SourceSansBold; selAll.TextSize = 10
-selAll.BackgroundColor3 = Color3.fromRGB(40,90,40); selAll.TextColor3 = Color3.fromRGB(255,255,255)
-Instance.new("UICorner", selAll).CornerRadius = UDim.new(0,3)
-local desel = Instance.new("TextButton", npcHdr); desel.Size = UDim2.new(0,45,0,16); desel.Position = UDim2.new(1,-47,0,3)
-desel.Text = "❌ Сбр"; desel.Font = Enum.Font.SourceSansBold; desel.TextSize = 10
-desel.BackgroundColor3 = Color3.fromRGB(90,40,40); desel.TextColor3 = Color3.fromRGB(255,255,255)
-Instance.new("UICorner", desel).CornerRadius = UDim.new(0,3)
-local npcCount = Instance.new("TextLabel", npcHdr); npcCount.Size = UDim2.new(1,-100,1,0); npcCount.Position = UDim2.new(0,5,0,0)
-npcCount.Text = "  NPC: 0"; npcCount.Font = Enum.Font.GothamBold; npcCount.TextSize = 10
-npcCount.TextColor3 = Color3.fromRGB(150,255,150); npcCount.BackgroundTransparency = 1; npcCount.TextXAlignment = Enum.TextXAlignment.Left
-local npcS = Instance.new("ScrollingFrame", npcsPanel)
-npcS.Size = UDim2.new(1,-4,1,-26); npcS.Position = UDim2.new(0,0,0,26)
-npcS.BackgroundTransparency = 1; npcS.ScrollBarThickness = 4; npcS.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UIListLayout", npcS).Padding = UDim.new(0,2)
+local npcHdr = newInst("Frame", {
+    Size = UDim2.new(1, -4, 0, 24),
+    BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+    BorderSizePixel = 0,
+    ZIndex = 12
+}, npcsPanel)
+makeCorner(npcHdr, 4)
+local selAll = newInst("TextButton", {
+    Size = UDim2.new(0, 48, 0, 18),
+    Position = UDim2.new(1, -100, 0, 3),
+    Text = "✅ Все",
+    Font = Enum.Font.SourceSansBold,
+    TextSize = 10,
+    BackgroundColor3 = Color3.fromRGB(40, 100, 40),
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BorderSizePixel = 0,
+    ZIndex = 13
+}, npcHdr)
+makeCorner(selAll, 3)
+local desel = newInst("TextButton", {
+    Size = UDim2.new(0, 48, 0, 18),
+    Position = UDim2.new(1, -50, 0, 3),
+    Text = "❌ Сбр",
+    Font = Enum.Font.SourceSansBold,
+    TextSize = 10,
+    BackgroundColor3 = Color3.fromRGB(100, 40, 40),
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    BorderSizePixel = 0,
+    ZIndex = 13
+}, npcHdr)
+makeCorner(desel, 3)
+local npcCount = newInst("TextLabel", {
+    Size = UDim2.new(1, -110, 1, 0),
+    Position = UDim2.new(0, 6, 0, 0),
+    Text = "  NPC: 0",
+    Font = Enum.Font.GothamBold,
+    TextSize = 10,
+    TextColor3 = Color3.fromRGB(150, 255, 150),
+    BackgroundTransparency = 1,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 13
+}, npcHdr)
+local npcS = newInst("ScrollingFrame", {
+    Size = UDim2.new(1, -4, 1, -28),
+    Position = UDim2.new(0, 0, 0, 28),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(100, 100, 130),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ZIndex = 11
+}, npcsPanel)
+newInst("UIListLayout", { Padding = UDim.new(0, 2) }, npcS)
 selAll.MouseButton1Click:Connect(function()
-    for _,o in ipairs(getAllNPCs()) do
+    for _, o in ipairs(getAllNPCs()) do
         selectedNPCs[o] = true
-        if not o:FindFirstChild("_HL") then local h=Instance.new("Highlight",o); h.Name="_HL"; h.FillColor=Color3.fromRGB(0,255,0); h.FillTransparency=0.65; highlights[o]=h end
+        if not o:FindFirstChild("_HL") then
+            local h = Instance.new("Highlight")
+            h.Name = "_HL"; h.FillColor = Color3.fromRGB(0, 255, 0); h.FillTransparency = 0.65
+            h.Parent = o
+            highlights[o] = h
+        end
     end
 end)
-desel.MouseButton1Click:Connect(function() for o,_ in pairs(selectedNPCs) do if o and o.Parent then local h=o:FindFirstChild("_HL"); if h then h:Destroy() end end end; selectedNPCs={}; currentNPC=nil end)
+desel.MouseButton1Click:Connect(function()
+    for o, _ in pairs(selectedNPCs) do
+        if o and o.Parent then
+            local h = o:FindFirstChild("_HL")
+            if h then h:Destroy() end
+        end
+    end
+    selectedNPCs = {}; currentNPC = nil
+end)
 local npcButtons = {}
 local function refreshNPCs()
-    for _,c in ipairs(npcS:GetChildren()) do if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end end
+    for _, c in ipairs(npcS:GetChildren()) do
+        if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
+    end
     npcButtons = {}
     local ents = getAllNPCs()
-    npcCount.Text = "  NPC: "..#ents.." | Методов: "..#MethodRegistry
-    title.Text = "  👑 v44 ("..#ents.." NPC, "..#MethodRegistry.." методов)"
-    for _,o in ipairs(ents) do
+    npcCount.Text = "  NPC: " .. #ents .. " | Методов: " .. #MethodRegistry
+    title.Text = "  👑 v45 (" .. #ents .. " NPC, " .. #MethodRegistry .. " методов)"
+    for _, o in ipairs(ents) do
         local ok, et, hp, root = analyze(o)
         if ok and root then
-            local b = Instance.new("TextButton", npcS); b.Size = UDim2.new(1,-4,0,20); b.Text = ""
-            b.BackgroundColor3 = selectedNPCs[o] and Color3.fromRGB(20,90,30) or Color3.fromRGB(32,32,42)
-            Instance.new("UICorner", b).CornerRadius = UDim.new(0,3)
-            local n = Instance.new("TextLabel", b); n.Size = UDim2.new(0.5,0,1,0); n.Position = UDim2.new(0,4,0,0)
-            n.Text = o.Name; n.Font = Enum.Font.GothamBold; n.TextSize = 10; n.TextColor3 = Color3.fromRGB(255,255,255)
-            n.BackgroundTransparency = 1; n.TextXAlignment = Enum.TextXAlignment.Left
-            local tl = Instance.new("TextLabel", b); tl.Size = UDim2.new(0.2,0,1,0); tl.Position = UDim2.new(0.5,0,0,0)
-            tl.Text = et; tl.Font = Enum.Font.SourceSans; tl.TextSize = 10; tl.TextColor3 = Color3.fromRGB(180,220,255); tl.BackgroundTransparency = 1
-            local hl = Instance.new("TextLabel", b); hl.Size = UDim2.new(0.2,0,1,0); hl.Position = UDim2.new(0.7,0,0,0)
-            hl.Text = hp; hl.Font = Enum.Font.SourceSans; hl.TextSize = 10; hl.TextColor3 = Color3.fromRGB(150,255,150); hl.BackgroundTransparency = 1
-            local ow = Instance.new("TextLabel", b); ow.Size = UDim2.new(0.1,0,1,0); ow.Position = UDim2.new(0.9,0,0,0)
-            ow.Text = checkOwn(root); ow.Font = Enum.Font.GothamBold; ow.TextSize = 10; ow.TextColor3 = Color3.fromRGB(200,200,200); ow.BackgroundTransparency = 1
+            local b = newInst("TextButton", {
+                Size = UDim2.new(1, -6, 0, 22),
+                Text = "",
+                BackgroundColor3 = selectedNPCs[o] and Color3.fromRGB(25, 100, 40) or Color3.fromRGB(35, 35, 45),
+                BorderSizePixel = 0,
+                ZIndex = 12
+            }, npcS)
+            makeCorner(b, 3)
+            local n = newInst("TextLabel", {
+                Size = UDim2.new(0.5, 0, 1, 0),
+                Position = UDim2.new(0, 5, 0, 0),
+                Text = o.Name,
+                Font = Enum.Font.GothamBold,
+                TextSize = 10,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundTransparency = 1,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 13
+            }, b)
+            local tl = newInst("TextLabel", {
+                Size = UDim2.new(0.2, 0, 1, 0),
+                Position = UDim2.new(0.5, 0, 0, 0),
+                Text = et,
+                Font = Enum.Font.SourceSans,
+                TextSize = 10,
+                TextColor3 = Color3.fromRGB(180, 220, 255),
+                BackgroundTransparency = 1,
+                ZIndex = 13
+            }, b)
+            local hl = newInst("TextLabel", {
+                Size = UDim2.new(0.2, 0, 1, 0),
+                Position = UDim2.new(0.7, 0, 0, 0),
+                Text = hp,
+                Font = Enum.Font.SourceSans,
+                TextSize = 10,
+                TextColor3 = Color3.fromRGB(150, 255, 150),
+                BackgroundTransparency = 1,
+                ZIndex = 13
+            }, b)
+            local ow = newInst("TextLabel", {
+                Size = UDim2.new(0.1, 0, 1, 0),
+                Position = UDim2.new(0.9, 0, 0, 0),
+                Text = checkOwn(root),
+                Font = Enum.Font.GothamBold,
+                TextSize = 10,
+                TextColor3 = Color3.fromRGB(210, 210, 210),
+                BackgroundTransparency = 1,
+                ZIndex = 13
+            }, b)
             b.MouseButton1Click:Connect(function()
                 if selectedNPCs[o] then
-                    selectedNPCs[o]=nil; b.BackgroundColor3 = Color3.fromRGB(32,32,42)
-                    local h=o:FindFirstChild("_HL"); if h then h:Destroy() end
+                    selectedNPCs[o] = nil
+                    b.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+                    local h = o:FindFirstChild("_HL")
+                    if h then h:Destroy() end
                 else
-                    selectedNPCs[o]=true; currentNPC=o; b.BackgroundColor3 = Color3.fromRGB(20,90,30)
-                    if not o:FindFirstChild("_HL") then local h=Instance.new("Highlight",o); h.Name="_HL"; h.FillColor=Color3.fromRGB(0,255,0); h.FillTransparency=0.65; highlights[o]=h end
+                    selectedNPCs[o] = true; currentNPC = o
+                    b.BackgroundColor3 = Color3.fromRGB(25, 100, 40)
+                    if not o:FindFirstChild("_HL") then
+                        local h = Instance.new("Highlight")
+                        h.Name = "_HL"; h.FillColor = Color3.fromRGB(0, 255, 0); h.FillTransparency = 0.65
+                        h.Parent = o
+                        highlights[o] = h
+                    end
                 end
             end)
-            table.insert(npcButtons, {o, b, hl, ow, root})
+            table.insert(npcButtons, { o, b, hl, ow, root })
         end
     end
 end
-task.spawn(function() while true do task.wait(1.5); for _,d in ipairs(npcButtons) do local o,b,hl,ow,root = unpack(d); if o and o.Parent and b and b.Parent and root then local ok,_,hp=analyze(o); if ok then hl.Text=hp end; ow.Text=checkOwn(root) end end end end)
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        for _, d in ipairs(npcButtons) do
+            local o, b, hl, ow, root = unpack(d)
+            if o and o.Parent and b and b.Parent and root then
+                local ok, _, hp = analyze(o)
+                if ok then hl.Text = hp end
+                ow.Text = checkOwn(root)
+            end
+        end
+    end
+end)
 task.spawn(function() while true do pcall(refreshNPCs); task.wait(6) end end)
 pcall(refreshNPCs)
 runAnalysis()
 local function unloadAll()
     AK.active = false; AK.installed = false
-    for _,c in pairs(connections) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
-    for _,c in pairs(rollbackGuards) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
-    for _,c in pairs(AK.hooks) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
-    for _,h in pairs(highlights) do pcall(function() if h and h.Parent then h:Destroy() end end) end
-    for _,o in ipairs(ws:GetDescendants()) do if o.Name=="_HL" or o.Name=="_ZoneVoid" or o.Name=="_SkyFreezeSeat" then pcall(function() o:Destroy() end) end end
+    for _, c in pairs(connections) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
+    for _, c in pairs(rollbackGuards) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
+    for _, c in pairs(AK.hooks) do pcall(function() if c and c.Disconnect then c:Disconnect() end end) end
+    for _, h in pairs(highlights) do pcall(function() if h and h.Parent then h:Destroy() end end) end
+    for _, o in ipairs(ws:GetDescendants()) do
+        if o.Name == "_HL" or o.Name == "_ZoneVoid" or o.Name == "_SkyFreezeSeat" then
+            pcall(function() o:Destroy() end)
+        end
+    end
     PartsCache = {}; DebounceMap = {}
     if sg and sg.Parent then sg:Destroy() end
     _G.NPCKillTesterPro = nil
 end
 _G.NPCKillTesterPro.Unload = unloadAll
 unloadBtn.MouseButton1Click:Connect(unloadAll)
-print("=================================================")
-print("[👑 v44.0 LOADED (minified) — "..#MethodRegistry.." методов]")
-print("  🚀 Оптимизация: debounce+кэши+ratelimit")
-print("  📡 Разделены Weapons/Events/Touch/BossSpecial")
-print("  🛡️ Anti-Kick PRO v43 — 5 слоёв (переписан!)")
-print("  🎯 20 новых методов v43 (№177-196)")
-print("=================================================")
+warn("╔══════════════════════════════════════╗")
+warn("║ ✅ v45 LOADED — GUI ДОЛЖНА ПОЯВИТЬСЯ ║")
+warn("║ Frame: " .. tostring(mf.Parent ~= nil) .. " | ScreenGui parent: " .. tostring(sg.Parent))
+warn("║ Методов: " .. #MethodRegistry .. " | GUI позиция: (20, 60)")
+warn("╚══════════════════════════════════════╝")
