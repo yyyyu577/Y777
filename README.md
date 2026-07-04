@@ -1,8 +1,45 @@
+warn("[v46] === СКРИПТ ЗАПУЩЕН — ЖДИ ДИАГНОСТИКУ ===")
+local __ok, __err = xpcall(function()
 if _G.NPCKillTesterPro and _G.NPCKillTesterPro.Unload then
     _G.NPCKillTesterPro.Unload()
     task.wait(0.3)
 end
 _G.NPCKillTesterPro = {}
+warn("[v46] шаг 1: _G инициализирован ✅")
+local function safeCall(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, r = pcall(fn, ...)
+    if ok then return r end
+    return nil
+end
+local _hookmm = rawget(getfenv(), "hookmetamethod")
+local _hookfn = rawget(getfenv(), "hookfunction")
+local _getconn = rawget(getfenv(), "getconnections")
+local _getrmt = rawget(getfenv(), "getrawmetatable")
+local _setro = rawget(getfenv(), "setreadonly")
+local _newccl = rawget(getfenv(), "newcclosure")
+local _getncm = rawget(getfenv(), "getnamecallmethod")
+local _shp = rawget(getfenv(), "sethiddenproperty")
+local _fti = rawget(getfenv(), "firetouchinterest")
+local _fpp = rawget(getfenv(), "fireproximityprompt")
+local _fcd = rawget(getfenv(), "fireclickdetector")
+local _gethui = rawget(getfenv(), "gethui")
+local _identify = rawget(getfenv(), "identifyexecutor")
+warn("[v46] шаг 2: executor globals cached ✅ (hookmm=" .. tostring(type(_hookmm) == "function") .. ", hookfn=" .. tostring(type(_hookfn) == "function") .. ", fti=" .. tostring(type(_fti) == "function") .. ")")
+if _identify then warn("[v46] executor: " .. tostring(safeCall(_identify))) end
+firetouchinterest = _fti
+fireproximityprompt = _fpp
+fireclickdetector = _fcd
+sethiddenproperty = _shp
+gethui = _gethui
+getconnections = _getconn
+hookmetamethod = _hookmm
+hookfunction = _hookfn
+getrawmetatable = _getrmt
+setreadonly = _setro
+newcclosure = _newccl
+getnamecallmethod = _getncm
+warn("[v46] шаг 3: safe globals set ✅")
 local rs = game:GetService("RunService")
 local ws = game:GetService("Workspace")
 local plrs = game:GetService("Players")
@@ -2272,8 +2309,16 @@ local function unloadAll()
 end
 _G.NPCKillTesterPro.Unload = unloadAll
 unloadBtn.MouseButton1Click:Connect(unloadAll)
-warn("╔══════════════════════════════════════╗")
-warn("║ ✅ v45 LOADED — GUI ДОЛЖНА ПОЯВИТЬСЯ ║")
-warn("║ Frame: " .. tostring(mf.Parent ~= nil) .. " | ScreenGui parent: " .. tostring(sg.Parent))
-warn("║ Методов: " .. #MethodRegistry .. " | GUI позиция: (20, 60)")
-warn("╚══════════════════════════════════════╝")
+warn("[v46] ✅ ВСЁ ЗАГРУЖЕНО — GUI должна быть видна в левом-верхнем углу")
+warn("[v46] ScreenGui parent: " .. tostring(sg.Parent) .. " | Методов: " .. #MethodRegistry)
+end, function(err)
+    warn("═══════════════════════════════════════════")
+    warn("❌ [v46] ОШИБКА: " .. tostring(err))
+    warn("═══════════════════════════════════════════")
+    warn(debug.traceback())
+    warn("═══════════════════════════════════════════")
+    return err
+end)
+if not __ok then
+    warn("[v46] СКРИПТ УПАЛ. Скопируй ошибку выше и покажи мне!")
+end
